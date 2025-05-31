@@ -7,7 +7,7 @@ from plotting import display_cluster_visualization, display_habitability_visuali
 
 
 def main():
-    st.set_page_config(page_title="Exoplanet Explorer", layout="wide")
+    st.set_page_config(page_title="Exoplanet Explorer", layout="wide", page_icon="🌎")
     st.sidebar.title("Exoplanet Explorer")
 
     # Load and prepare data once
