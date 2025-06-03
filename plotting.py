@@ -537,22 +537,17 @@ def display_lda_visualization(
         st.warning("No exoplanet data available for LDA.")
         return
 
-    default_lda_features_friendly = [
-        "Planet Radius (ER)",
+    selected_lda_features_friendly = [
+        "Planet Radius (Earth Radii)",
         "Equilibrium Temperature (K)",
-        "Stellar Eff. Temp. (K)",
+        "Insolation Flux (Earth Flux)",
         "Planet Density (g/cm³)",
-    ]
-    valid_default_lda_selection = [
-        f for f in default_lda_features_friendly if f in feature_options_map
+        "Stellar Eff. Temp. (K)",
+        "Stellar Radius (Solar Radii)",
+        "Stellar Mass (Solar Masses)",
+        "Stellar Metallicity ([Fe/H] dex)",
     ]
 
-    selected_lda_features_friendly = st.sidebar.multiselect(
-        "Select features for LDA:",
-        options=list(feature_options_map.keys()),
-        default=valid_default_lda_selection,
-        key="lda_features_multiselect",
-    )
     selected_lda_features_actual = [
         feature_options_map[f] for f in selected_lda_features_friendly
     ]
