@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis  # New Import
 import streamlit as st
 import warnings
 
@@ -22,6 +23,12 @@ warnings.filterwarnings(
     "ignore",
     category=UserWarning,
     message="KMeans is known to have a memory leak on Windows with MKL",
+)
+# Add UserWarning ignore for LDA singular matrix
+warnings.filterwarnings(
+    "ignore",
+    category=UserWarning,
+    message="Variables are collinear.",  # sklearn.discriminant_analysis
 )
 
 
@@ -125,7 +132,6 @@ def load_and_prepare_data(file_path="data/Planetary-Systems-May-20-2025_clean.cs
         if key not in earth_data:
             earth_data[key] = np.nan
 
-    # Use a more robust way to check for Earth, allowing for variations like "Earth (Sol System)"
     earth_mask = df["pl_name"].astype(str).str.contains("Earth", case=False) & df[
         "hostname"
     ].astype(str).str.contains("Sol", case=False, na=False)
@@ -133,11 +139,10 @@ def load_and_prepare_data(file_path="data/Planetary-Systems-May-20-2025_clean.cs
     if not earth_mask.any():
         earth_df_row = pd.DataFrame([earth_data])
         df = pd.concat([df, earth_df_row], ignore_index=True)
-    else:  # Update existing Earth entry
-        earth_idx = df[earth_mask].index[0]  # Get the first match
+    else:
+        earth_idx = df[earth_mask].index[0]
         for col, val in earth_data.items():
             df.loc[earth_idx, col] = val
-        # Ensure pl_name and hostname are standardized for our Earth entry
         df.loc[earth_idx, "pl_name"] = "Earth"
         df.loc[earth_idx, "hostname"] = "Sol"
 
@@ -145,7 +150,6 @@ def load_and_prepare_data(file_path="data/Planetary-Systems-May-20-2025_clean.cs
         classify_exoplanet, args=(HABITABILITY_THRESHOLDS, KEY_PARAMETERS_MAP), axis=1
     )
 
-    # Ensure Earth is correctly classified
     earth_final_mask = (df["pl_name"] == "Earth") & (df["hostname"] == "Sol")
     if earth_final_mask.any():
         earth_idx_final = df[earth_final_mask].index[0]
@@ -186,14 +190,14 @@ Stellar Mass: {format_value(row.get('st_mass'), 2)} SM | Stellar Met: {format_va
 @st.cache_data
 def run_clustering(_df_input, n_clusters_requested, cluster_features_list):
     df = _df_input.copy()
-    df["cluster"] = -1  # Signifies "not clustered" or "unclusterable"
+    df["cluster"] = -1
 
     if not cluster_features_list:
         return df, 1
 
     missing_cols = [col for col in cluster_features_list if col not in df.columns]
     if missing_cols:
-        return df, 1  # Silently return if features are missing
+        return df, 1
 
     features_for_clustering_df = df[cluster_features_list].copy()
     features_for_clustering_df.dropna(subset=cluster_features_list, inplace=True)
@@ -227,7 +231,7 @@ def run_clustering(_df_input, n_clusters_requested, cluster_features_list):
     scaler = StandardScaler()
     try:
         scaled_features = scaler.fit_transform(features_for_clustering_values)
-    except ValueError:  # Should be caught by nunique, but safeguard
+    except ValueError:
         df.loc[valid_indices_for_clustering, "cluster"] = 0
         return df, 1
 
@@ -239,7 +243,156 @@ def run_clustering(_df_input, n_clusters_requested, cluster_features_list):
         kmeans = KMeans(n_clusters=actual_n_clusters, random_state=42, n_init="auto")
         cluster_labels = kmeans.fit_predict(scaled_features)
         df.loc[valid_indices_for_clustering, "cluster"] = cluster_labels
-    except Exception:  # Fallback if KMeans errors on prepared data
+    except Exception:
         df.loc[valid_indices_for_clustering, "cluster"] = 0
         actual_n_clusters = 1
     return df, actual_n_clusters
+
+
+@st.cache_data
+def run_lda_analysis(
+    _df_input,
+    lda_features_list,
+    target_column_name="classification_category",
+    n_components_to_request=2,
+):
+    """
+    Performs LDA on the input DataFrame.
+    Adds LDA components as new columns (e.g., 'lda_comp_1', 'lda_comp_2').
+    Rows that cannot be used for LDA (e.g., due to NaNs in features/target) will have NaN for LDA components.
+    """
+    df = _df_input.copy()
+
+    # Initialize LDA component columns in the main DataFrame
+    lda_col_names = [
+        f"lda_comp_{i+1}" for i in range(n_components_to_request)
+    ]  # Initialize based on request
+    for col_name in lda_col_names:
+        df[col_name] = np.nan
+
+    lda_model = None
+    actual_n_components = 0  # Will be set after LDA transform
+    explained_variance_ratio = []
+    messages = {"warning": [], "error": [], "info": []}
+
+    if not lda_features_list:
+        messages["warning"].append("LDA: No features selected.")
+        return df, lda_model, actual_n_components, explained_variance_ratio, messages
+
+    required_cols = lda_features_list + [target_column_name]
+    missing_input_cols = [col for col in required_cols if col not in df.columns]
+    if missing_input_cols:
+        messages["warning"].append(
+            f"LDA: Input data missing columns: {', '.join(missing_input_cols)}"
+        )
+        return df, lda_model, actual_n_components, explained_variance_ratio, messages
+
+    df_lda_subset = df[required_cols].dropna().copy()
+
+    if df_lda_subset.empty:
+        messages["warning"].append(
+            "LDA: No data available after dropping NaNs for selected features and target."
+        )
+        return df, lda_model, actual_n_components, explained_variance_ratio, messages
+
+    X = df_lda_subset[lda_features_list]
+    y = df_lda_subset[target_column_name]
+
+    unique_classes = y.nunique()
+    if unique_classes < 2:
+        messages["warning"].append(
+            f"LDA: Need at least 2 classes for LDA, found {unique_classes}."
+        )
+        return df, lda_model, actual_n_components, explained_variance_ratio, messages
+
+    class_counts = y.value_counts()
+    if any(class_counts < 2):
+        messages["warning"].append(
+            f"LDA: Some classes have very few samples ({class_counts[class_counts < 2].to_dict()}), which might cause issues or reduce effective components."
+        )
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    max_possible_components = min(X_scaled.shape[1], unique_classes - 1)
+
+    if max_possible_components < 1:
+        messages["warning"].append(
+            f"LDA: Cannot compute any components. Max possible components is {max_possible_components} (requires > 0). This might be due to too few features or classes."
+        )
+        return df, lda_model, actual_n_components, explained_variance_ratio, messages
+
+    # Determine the actual number of components LDA will attempt to compute
+    n_components_for_lda = min(n_components_to_request, max_possible_components)
+
+    if (
+        n_components_for_lda < 1
+    ):  # Should be caught by max_possible_components < 1, but as a safeguard
+        messages["warning"].append(
+            "LDA: Effective number of components to compute is less than 1."
+        )
+        return df, lda_model, actual_n_components, explained_variance_ratio, messages
+
+    try:
+        # When solver='svd', n_components is the number of components to keep.
+        # It cannot be larger than min(n_features, n_classes - 1).
+        # If n_components is not specified, it is set to min(n_features, n_classes - 1).
+        lda = LinearDiscriminantAnalysis(
+            n_components=n_components_for_lda, solver="svd"
+        )
+        X_lda = lda.fit_transform(X_scaled, y)
+
+        lda_model = lda
+        # The actual number of components produced by transform is X_lda.shape[1]
+        actual_n_components = X_lda.shape[1]
+
+        # Re-initialize LDA component columns in the main DataFrame based on actual_n_components
+        # This is important if actual_n_components < n_components_to_request
+        # First, remove any pre-initialized columns if they were more than actual
+        for i in range(actual_n_components, n_components_to_request):
+            col_to_remove = f"lda_comp_{i+1}"
+            if col_to_remove in df.columns:
+                del df[col_to_remove]
+
+        # Now, ensure columns for actual components exist
+        for i in range(actual_n_components):
+            col_name = f"lda_comp_{i+1}"
+            if (
+                col_name not in df.columns
+            ):  # Should exist from initial pre-allocation if actual <= requested
+                df[col_name] = np.nan
+
+        explained_variance_ratio = (
+            lda.explained_variance_ratio_
+            if hasattr(lda, "explained_variance_ratio_")
+            else []
+        )
+
+        for i in range(actual_n_components):
+            target_lda_col_name = f"lda_comp_{i+1}"
+            df.loc[df_lda_subset.index, target_lda_col_name] = X_lda[:, i]
+
+        if actual_n_components < n_components_to_request:
+            messages["info"].append(
+                f"LDA: Requested {n_components_to_request} components, but computed {actual_n_components} due to data structure (e.g., max possible is {max_possible_components} or collinearity reduced effective components)."
+            )
+        elif (
+            n_components_for_lda < n_components_to_request
+        ):  # Implies max_possible_components was the limiter
+            messages["info"].append(
+                f"LDA: Requested {n_components_to_request} components, computed {actual_n_components} (max possible for this data was {max_possible_components})."
+            )
+
+    except ValueError as e:
+        messages["error"].append(
+            f"LDA ValueError: {e}. This can happen if classes have too few samples for 'svd' solver, or features are perfectly collinear."
+        )
+        return df, None, 0, [], messages
+    except Exception as e:
+        messages["error"].append(f"An unexpected error occurred during LDA: {e}")
+        # Log the full traceback for debugging if needed:
+        # import traceback
+        # messages["error"].append(f"Traceback: {traceback.format_exc()}")
+        return df, None, 0, [], messages
+
+    return df, lda_model, actual_n_components, explained_variance_ratio, messages

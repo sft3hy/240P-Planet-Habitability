@@ -16,12 +16,11 @@ from constants import (
     CAMERA_Z_FACTOR,
     CAMERA_EFFECTIVE_DISTANCE_MIN,
     CAMERA_EFFECTIVE_DISTANCE_MAX,
-    CLASSIFICATION_COLORS,
+    CLASSIFICATION_COLORS,  # Make sure this is imported if not already
     HOVER_FONT_COLOR,
     HOVER_BG_COLORS,
 )
 
-# format_value is implicitly available if called from data_processing, but explicit import is safer
 from data_processing import format_value
 
 
@@ -58,7 +57,6 @@ def create_sphere_surface(
 
 def create_base_figure(df, neighborhood_sphere_initial_visibility=True):
     fig = go.Figure()
-    # Add Sun
     fig.add_trace(
         go.Scatter3d(
             x=[0],
@@ -72,7 +70,6 @@ def create_base_figure(df, neighborhood_sphere_initial_visibility=True):
             visible=True,
         )
     )
-    # Add Local Neighborhood Sphere
     neighborhood_radius_ly = 1000
     fig.add_trace(
         create_sphere_surface(
@@ -85,7 +82,6 @@ def create_base_figure(df, neighborhood_sphere_initial_visibility=True):
         )
     )
 
-    # Dynamic Camera
     camera_eye_x, camera_eye_y, camera_eye_z = (
         CAMERA_DEFAULT_EYE_X,
         CAMERA_DEFAULT_EYE_Y,
@@ -132,7 +128,7 @@ def create_base_figure(df, neighborhood_sphere_initial_visibility=True):
             ),
         ),
         legend=LEGEND_STYLE,
-        margin=dict(l=0, r=0, b=0, t=40),  # Keep title margin small
+        margin=dict(l=0, r=0, b=0, t=40),
     )
     return fig
 
@@ -150,7 +146,6 @@ def display_exoplanet_classification_map(df_input):
     df = df_input.copy()
     fig = create_base_figure(df, neighborhood_sphere_initial_visibility="legendonly")
 
-    # Add traces for each classification category for legend and distinct coloring
     for category, color in CLASSIFICATION_COLORS.items():
         category_df = df[df["classification_category"] == category]
         if not category_df.empty:
@@ -162,23 +157,21 @@ def display_exoplanet_classification_map(df_input):
                     mode="markers",
                     marker=dict(
                         size=category_df["marker_size"],
-                        color=color,  # Use the direct color string
+                        color=color,
                         opacity=0.9,
                     ),
                     text=category_df["hover_text_main"],
                     hoverinfo="text",
-                    name=category,  # For legend
+                    name=category,
                     hoverlabel=dict(
-                        bgcolor=HOVER_BG_COLORS.get(
-                            category, "grey"
-                        ),  # Fallback bgcolor
+                        bgcolor=HOVER_BG_COLORS.get(category, "grey"),
                         font=dict(color=HOVER_FONT_COLOR),
                         bordercolor="rgba(0,0,0,0.6)",
-                        namelength=-1,  # Show full hover text
+                        namelength=-1,
                     ),
                 )
             )
-        else:  # Add an empty trace if no planets in this category, for legend completeness
+        else:
             fig.add_trace(
                 go.Scatter3d(
                     x=[None],
@@ -219,6 +212,7 @@ def display_habitability_analysis_dashboard(
         }
     )
     st.table(summary_df)
+    st.write("*Earth is included in the Excellent Candidate Category")
 
     st.subheader("Key Planets & Findings Overview")
     earth_row = df[(df["pl_name"] == "Earth") & (df["hostname"] == "Sol")]
@@ -332,114 +326,190 @@ def display_habitability_analysis_dashboard(
     )
 
 
-def display_cluster_visualization(base_df, run_clustering_func):
+# MODIFIED FUNCTION: display_cluster_visualization
+def display_cluster_visualization(
+    base_df, run_clustering_func, feature_options_map
+):  # Added feature_options_map
     st.header("K-Means Cluster Analysis")
     st.markdown(
         "Explore exoplanet clusters based on selected physical parameters. This is an unsupervised learning approach to find natural groupings in the data."
     )
 
-    feature_options_map = {
-        "Planet Radius (ER)": "pl_rade",
-        "Equilibrium Temperature (K)": "pl_eqt",
-        "Insolation (Earth Flux)": "pl_insol",
-        "Planet Density (g/cm³)": "pl_dens",
-        "Stellar Eff. Temp. (K)": "st_teff",
-        "Stellar Radius (SR)": "st_rad",
-        "Stellar Mass (SM)": "st_mass",
-        "Stellar Metallicity (dex)": "st_met",
-    }
+    if base_df is None or base_df.empty:  # Added check for base_df empty as well
+        st.warning("No exoplanet data available for K-Means Clustering.")
+        return
+
+    if not feature_options_map:  # Check if the map itself is empty
+        st.sidebar.error(
+            "Feature options for clustering are not available. Cannot proceed with K-Means."
+        )
+        st.error(
+            "Configuration error: Feature options map is missing for K-Means clustering."
+        )
+        return
+
+    # Default selection uses the friendly names (keys of the map)
     default_selection_friendly = ["Planet Radius (ER)", "Equilibrium Temperature (K)"]
+
+    # Ensure default selections are valid keys in the provided feature_options_map
     valid_default_selection = [
         f for f in default_selection_friendly if f in feature_options_map
     ]
+    if (
+        not valid_default_selection and feature_options_map
+    ):  # If defaults are bad, pick first few available
+        valid_default_selection = list(feature_options_map.keys())[:2]
 
     selected_features_friendly = st.sidebar.multiselect(
         "Select features for K-Means clustering:",
-        options=list(feature_options_map.keys()),
+        options=list(feature_options_map.keys()),  # Use keys from the passed map
         default=valid_default_selection,
         key="cluster_features_multiselect",
     )
+
+    # Map friendly names back to actual DataFrame column names
     selected_features_actual = [
-        feature_options_map[f] for f in selected_features_friendly
+        feature_options_map[f]
+        for f in selected_features_friendly
+        if f in feature_options_map
     ]
+
     if not selected_features_actual:
         st.sidebar.warning("Please select at least one feature for clustering.")
+        # Optionally, you could prevent further execution or display a message in the main area
+        # st.info("Select features in the sidebar to perform K-Means clustering.")
+        # return # Or let run_clustering handle it if it's robust to empty feature list
 
-    min_clusters, max_clusters_possible = 1, (
+    min_clusters = 1
+    # Calculate max_clusters_possible based on non-NaN rows for *at least one* selected feature if features are selected
+    # This is a bit complex to do perfectly here, so we'll stick to len(base_df) as a simpler upper bound for the slider.
+    # A more precise count would involve dropping NaNs for selected_features_actual from base_df.
+    max_clusters_possible = (
         len(base_df) if base_df is not None and not base_df.empty else 1
     )
+
     slider_max_clusters = max(
         1, min(20, max_clusters_possible if max_clusters_possible > 0 else 1)
     )
     default_n_clusters = max(
         min_clusters, min(5, slider_max_clusters) if slider_max_clusters > 0 else 1
-    )  # Default to 5 or less
+    )
 
     n_clusters_interactive = st.sidebar.slider(
         "Number of Clusters (K-Means)",
         min_value=min_clusters,
-        max_value=slider_max_clusters,
+        max_value=slider_max_clusters,  # Make sure slider_max_clusters is at least 1
         value=default_n_clusters,
         step=1,
         key="n_clusters_slider_plotly",
     )
 
-    if base_df is None:
-        st.error("No data available to display clusters.")
+    # This was already checked, but good for robustness
+    if base_df is None or base_df.empty:
+        st.error(
+            "No data available to display clusters."
+        )  # Should not be reached if initial check passes
         return
 
     df_clustered, actual_n_clusters = run_clustering_func(
         base_df, n_clusters_interactive, selected_features_actual
     )
 
+    # Message about excluded planets
+    # Count planets that *could* have been clustered (had data for selected features)
+    num_eligible_for_clustering = 0
+    if selected_features_actual:
+        # Create a temporary DataFrame with only the selected features and drop rows where ALL are NaN
+        # A more accurate count would be rows where NONE of the selected features are NaN,
+        # matching run_clustering's dropna(subset=...)
+        eligible_df = base_df.dropna(subset=selected_features_actual)
+        num_eligible_for_clustering = len(eligible_df)
+
     num_actually_clustered = len(df_clustered[df_clustered["cluster"] != -1])
-    if selected_features_actual and num_actually_clustered < len(df_clustered):
-        st.sidebar.info(
-            f"{len(df_clustered) - num_actually_clustered} planet(s) excluded from clustering (e.g., missing data for selected features) and are in Cluster ID -1."
-        )
+
+    if selected_features_actual:
+        if num_actually_clustered < num_eligible_for_clustering:
+            st.sidebar.info(
+                f"{num_eligible_for_clustering - num_actually_clustered} planet(s) with data for selected features were not clustered (e.g., became singletons or other K-Means edge cases). "
+                f"They are in Cluster ID -1 (or unassigned)."
+            )
+        total_rows_with_any_nan_in_selected = len(base_df) - num_eligible_for_clustering
+        if total_rows_with_any_nan_in_selected > 0:
+            st.sidebar.info(
+                f"{total_rows_with_any_nan_in_selected} planet(s) were missing data for one or more selected features and excluded from clustering eligibility."
+            )
+
     if (
         actual_n_clusters < n_clusters_interactive
-        and len(base_df) > 1
-        and n_clusters_interactive > 1
-        and num_actually_clustered > 0
+        and n_clusters_interactive > 1  # Only show if user requested more than 1
+        and num_actually_clustered > 0  # Only if some clustering happened
     ):
         st.sidebar.info(
-            f"Adjusted to {actual_n_clusters} clusters for the {num_actually_clustered} planet(s) included in clustering due to data characteristics."
+            f"Adjusted to {actual_n_clusters} clusters for the {num_actually_clustered} planet(s) included in clustering, likely due to data characteristics or number of valid data points."
         )
+
+    # Ensure hover_text_main exists before trying to use it
+    if (
+        "hover_text_main" not in df_clustered.columns
+        and "pl_name" in df_clustered.columns
+    ):  # Basic fallback
+        df_clustered["hover_text_main"] = df_clustered["pl_name"]
 
     df_clustered["hover_text_cluster"] = df_clustered.apply(
         lambda row: f"Cluster ID: {format_value(row.get('cluster'), 'int')}<br>"
-        + row["hover_text_main"],
+        + row.get(
+            "hover_text_main",
+            f"Planet: {row.get('pl_name', 'N/A')} Details not available",
+        ),
         axis=1,
     )
 
-    fig = create_base_figure(df_clustered, neighborhood_sphere_initial_visibility=True)
-    if not df_clustered.empty and "cluster" in df_clustered.columns:
-        show_colorbar = df_clustered["cluster"].nunique() > 1
-        fig.add_trace(
-            go.Scatter3d(
-                x=df_clustered["x"],
-                y=df_clustered["y"],
-                z=df_clustered["z"],
-                mode="markers",
-                marker=dict(
-                    size=df_clustered["marker_size"],  # Use the unified marker size
-                    color=df_clustered["cluster"],
-                    colorscale="viridis",  # Viridis handles -1 well
-                    opacity=0.9,
-                    colorbar=(
-                        dict(title="Cluster ID", thickness=15, len=0.6, y=0.5, x=1.05)
-                        if show_colorbar
-                        else None
+    fig = create_base_figure(
+        df_clustered, neighborhood_sphere_initial_visibility=True
+    )  # create_base_figure should handle None or empty df_clustered
+
+    if (
+        not df_clustered.empty
+        and "cluster" in df_clustered.columns
+        and "x" in df_clustered.columns
+    ):
+        # Filter out rows that don't have coordinates for plotting, even if clustered
+        plot_df = df_clustered.dropna(subset=["x", "y", "z", "marker_size", "cluster"])
+
+        if not plot_df.empty:
+            show_colorbar = (
+                plot_df["cluster"].nunique() > 1
+            )  # Base colorbar on actual plotted data
+            fig.add_trace(
+                go.Scatter3d(
+                    x=plot_df["x"],
+                    y=plot_df["y"],
+                    z=plot_df["z"],
+                    mode="markers",
+                    marker=dict(
+                        size=plot_df["marker_size"],
+                        color=plot_df["cluster"],
+                        colorscale="viridis",
+                        opacity=0.9,
+                        colorbar=(
+                            dict(
+                                title="Cluster ID", thickness=15, len=0.6, y=0.5, x=1.05
+                            )
+                            if show_colorbar
+                            else None
+                        ),
                     ),
-                ),
-                text=df_clustered["hover_text_cluster"],
-                hoverinfo="text",
-                name="Exoplanets (Clusters)",
-                showlegend=True,  # Keep one legend entry for "Exoplanets (Clusters)"
-                visible=True,
+                    text=plot_df["hover_text_cluster"],
+                    hoverinfo="text",
+                    name="Exoplanets (Clusters)",
+                    showlegend=True,
+                    visible=True,
+                )
             )
-        )
+        else:
+            st.info(
+                "No planets with valid coordinates and cluster assignments to display in the 3D map."
+            )
 
     cluster_features_str = (
         ", ".join(selected_features_friendly)
@@ -450,3 +520,201 @@ def display_cluster_visualization(base_df, run_clustering_func):
         title_text=f"Exoplanetary Systems - K-Means Clustered by: {cluster_features_str}"
     )
     st.plotly_chart(fig, use_container_width=True, theme="streamlit")
+
+
+def display_lda_visualization(
+    base_df, run_lda_func, feature_options_map, classification_colors
+):
+    st.header("Linear Discriminant Analysis (LDA) Visualization")
+    st.markdown(
+        "LDA is a supervised dimensionality reduction technique that projects data to a lower-dimensional "
+        "space while maximizing separability between predefined classes. "
+        "Here, we use the **'classification_category'** as the target classes. "
+        "The plot shows the first two LDA components."
+    )
+
+    if base_df is None or base_df.empty:
+        st.warning("No exoplanet data available for LDA.")
+        return
+
+    default_lda_features_friendly = [
+        "Planet Radius (ER)",
+        "Equilibrium Temperature (K)",
+        "Stellar Eff. Temp. (K)",
+        "Planet Density (g/cm³)",
+    ]
+    valid_default_lda_selection = [
+        f for f in default_lda_features_friendly if f in feature_options_map
+    ]
+
+    selected_lda_features_friendly = st.sidebar.multiselect(
+        "Select features for LDA:",
+        options=list(feature_options_map.keys()),
+        default=valid_default_lda_selection,
+        key="lda_features_multiselect",
+    )
+    selected_lda_features_actual = [
+        feature_options_map[f] for f in selected_lda_features_friendly
+    ]
+
+    if not selected_lda_features_actual:
+        st.sidebar.warning("Please select at least one feature for LDA.")
+        st.info("Select features in the sidebar to perform LDA analysis.")
+        return
+
+    df_with_lda, lda_model, actual_n_components, explained_variance, messages = (
+        run_lda_func(
+            base_df,
+            selected_lda_features_actual,
+            target_column_name="classification_category",
+            n_components_to_request=2,
+        )
+    )
+
+    for msg_type, msg_list in messages.items():
+        for msg in msg_list:
+            if msg_type == "warning":
+                st.sidebar.warning(msg)
+            elif msg_type == "error":
+                st.error(msg)
+            elif msg_type == "info":
+                st.info(msg)
+
+    if actual_n_components > 0 and "lda_comp_1" in df_with_lda.columns:
+        df_plot_lda = df_with_lda.dropna(subset=["lda_comp_1"]).copy()
+    else:
+        df_plot_lda = pd.DataFrame()
+
+    if lda_model is None or actual_n_components == 0 or df_plot_lda.empty:
+        st.info(
+            "LDA could not be performed or resulted in no components for the current data/feature selection."
+        )
+        return
+
+    st.subheader(
+        f"LDA Results ({actual_n_components} Component{'s' if actual_n_components > 1 else ''})"
+    )
+
+    # --- THIS IS THE CORRECTED PART ---
+    # Check if explained_variance is not None and has elements
+    if explained_variance is not None and len(explained_variance) > 0:
+        # Alternatively, if explained_variance is always a numpy array (even if empty):
+        # if explained_variance.size > 0:
+        # --- END OF CORRECTION ---
+        expl_var_str_list = [
+            f"LD{i+1}: {var*100:.2f}%" for i, var in enumerate(explained_variance)
+        ]
+        st.write(
+            f"Explained Variance Ratio by component: {', '.join(expl_var_str_list)}"
+        )
+        st.write(
+            f"Total Explained Variance ({min(actual_n_components, len(explained_variance))} components): {sum(explained_variance)*100:.2f}%"
+        )
+
+    def create_lda_hover_text(row):
+        base_hover = row.get("hover_text_main", "")
+        # Ensure robust splitting of hover_text_main
+        parts = base_hover.split("--- Key Parameters ---", 1)
+        header_part = parts[0]
+        params_part = parts[1] if len(parts) > 1 else "Parameter details not available."
+
+        lda_info_list = []
+        if "lda_comp_1" in row and pd.notna(row["lda_comp_1"]):
+            lda_info_list.append(f"LDA Comp 1: {row['lda_comp_1']:.3f}")
+        if (
+            actual_n_components >= 2
+            and "lda_comp_2" in row
+            and pd.notna(row.get("lda_comp_2"))
+        ):
+            lda_info_list.append(f"LDA Comp 2: {row['lda_comp_2']:.3f}")
+
+        lda_info_str = "<br>".join(lda_info_list)
+        if lda_info_str:
+            lda_info_str += "<br>"
+
+        return f"{header_part.replace('Classification:', 'Original Class:')}<br>{lda_info_str}<br>--- Key Parameters ---{params_part}"
+
+    df_plot_lda.loc[:, "hover_text_lda"] = df_plot_lda.apply(
+        create_lda_hover_text, axis=1
+    )
+
+    if actual_n_components == 1:
+        st.write("LDA resulted in 1 component. Displaying as a histogram/density plot.")
+        fig_lda = px.histogram(
+            df_plot_lda,
+            x="lda_comp_1",
+            color="classification_category",
+            marginal="box",
+            color_discrete_map=classification_colors,
+            labels={"lda_comp_1": "LDA Component 1"},
+            title="Distribution of LDA Component 1 by Class",
+            custom_data=["hover_text_lda"],
+        )
+        fig_lda.update_traces(
+            hovertemplate="%{customdata[0]}<extra></extra>"
+        )  # Ensure hover works
+        st.plotly_chart(fig_lda, use_container_width=True)
+
+    elif actual_n_components >= 2:
+        st.write(
+            "LDA resulted in 2 or more components. Displaying the first two components."
+        )
+        fig_lda = px.scatter(
+            df_plot_lda,
+            x="lda_comp_1",
+            y="lda_comp_2",
+            color="classification_category",
+            color_discrete_map=classification_colors,
+            symbol="classification_category",
+            labels={"lda_comp_1": "LDA Component 1", "lda_comp_2": "LDA Component 2"},
+            title="Exoplanets in LDA Space (First 2 Components)",
+            custom_data=["hover_text_lda"],  # Ensure hover works
+        )
+        fig_lda.update_traces(
+            hovertemplate="%{customdata[0]}<extra></extra>"
+        )  # Ensure hover works
+        fig_lda.update_layout(legend_title_text="Classification")
+        st.plotly_chart(fig_lda, use_container_width=True)
+
+    if (
+        hasattr(lda_model, "scalings_")
+        and lda_model.scalings_ is not None
+        and lda_model.scalings_.size > 0
+    ):
+        st.subheader("LDA Loadings (Feature Contributions to LDA Components)")
+        num_loadings_to_show = min(actual_n_components, lda_model.scalings_.shape[1], 2)
+        if num_loadings_to_show > 0:
+            loadings_cols = [f"LD{i+1}" for i in range(num_loadings_to_show)]
+
+            # Ensure selected_lda_features_actual matches the number of rows in scalings_
+            # This means it should be the features *used* by LDA
+            # `lda_model.feature_names_in_` would be ideal if available and consistently set,
+            # but selected_lda_features_actual (after scaling/LDA processing) should align with scalings_ rows.
+
+            # If lda_model.scalings_ has fewer rows than selected_lda_features_actual due to feature removal
+            # (e.g., zero variance), this could be an issue. For now, assume they align.
+            # A safer approach would be to get feature names from the lda_model if possible,
+            # or ensure the input features to LDA are exactly those used for scaling.
+
+            if len(selected_lda_features_actual) == lda_model.scalings_.shape[0]:
+                loadings_df = pd.DataFrame(
+                    lda_model.scalings_[:, :num_loadings_to_show],
+                    index=selected_lda_features_actual,
+                    columns=loadings_cols,
+                )
+                st.write(
+                    "Loadings indicate how much each original feature contributes to the LDA components."
+                )
+                st.dataframe(
+                    loadings_df.style.format("{:.3f}").background_gradient(
+                        cmap="viridis", axis=0
+                    )
+                )
+            else:
+                st.warning(
+                    f"Could not display LDA loadings: Mismatch between number of selected features ({len(selected_lda_features_actual)}) and features in LDA model scalings ({lda_model.scalings_.shape[0]})."
+                )
+        else:
+            st.write(
+                "No LDA loadings to display (e.g., no components or scalings not available)."
+            )
