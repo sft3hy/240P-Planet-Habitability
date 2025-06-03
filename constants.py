@@ -93,3 +93,64 @@ LEGEND_STYLE = dict(
     bordercolor="rgba(255,255,255,0.5)",
     borderwidth=1,
 )
+
+
+# PCA Specific Constants from Notebook
+PCA_RANGE_PREFERENCE_DEFAULT = "relaxed"  # or "refined"
+
+PCA_GOOD_RANGES_SETS = {
+    "relaxed": {
+        "pl_rade": (0.4, 3.0),
+        "pl_eqt": (130, 400),
+        "pl_insol": (0.1, 3.0),
+        "pl_dens": (2.5, 10.0),
+        "st_teff": (3800, 7200),
+        "st_rad": (0.4, 1.8),
+        "st_mass": (0.3, 1.8),
+        "st_met": (-0.6, 0.6),
+    },
+    "refined": {
+        "pl_rade": (0.8, 1.7),
+        "pl_eqt": (200, 300),
+        "pl_insol": (0.5, 1.4),
+        "pl_dens": (4.0, 7.0),
+        "st_teff": (4500, 6200),
+        "st_rad": (0.7, 1.3),
+        "st_mass": (0.6, 1.2),
+        "st_met": (-0.2, 0.3),
+    },
+}
+
+PCA_CATEGORY_COLORS = {
+    "Excellent Candidate": "#228B22",
+    "Good Planet, Poor Star": "#32CD32",
+    "Good Star, Poor Planet": "#FFD700",
+    "Too Cold": "#4169E1",
+    "Too Hot": "#DC143C",
+    "Too Large (Gas Giant)": "#9370DB",
+    "Too Small": "#FF69B4",
+    "Other Issues": "#FF8C00",
+    "Missing Data": "#A9A9A9",  # Added a color for Missing Data
+}
+
+PCA_FEATURES = [
+    "pl_rade",
+    "pl_eqt",
+    "pl_insol",
+    "pl_dens",
+    "st_teff",
+    "st_rad",
+    "st_mass",
+    "st_met",
+]
+
+PCA_COMPLETE_CATEGORIES = [
+    "Excellent Candidate",
+    "Good Planet, Poor Star",
+    "Good Star, Poor Planet",
+    "Too Cold",
+    "Too Hot",
+    "Too Large (Gas Giant)",
+    "Too Small",
+    "Other Issues",
+]

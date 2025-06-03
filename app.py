@@ -4,15 +4,21 @@ import streamlit as st
 from data_processing import (
     load_and_prepare_data,
     run_clustering,
-    run_lda_analysis,
-)  # Added run_lda_analysis
+    run_lda_analysis,  # Keep existing
+    # PCA functions are called by plotting.display_pca_analysis_page
+)
 from plotting import (
     display_exoplanet_classification_map,
     display_habitability_analysis_dashboard,
     display_cluster_visualization,
-    display_lda_visualization,  # Added display_lda_visualization
+    display_lda_visualization,
+    display_pca_analysis_page,  # New PCA page display function
 )
-from constants import KEY_PARAMETERS_MAP, HABITABILITY_THRESHOLDS, CLASSIFICATION_COLORS
+from constants import (
+    KEY_PARAMETERS_MAP,
+    HABITABILITY_THRESHOLDS,
+    CLASSIFICATION_COLORS,
+)  # Keep existing
 
 
 def main():
@@ -22,18 +28,22 @@ def main():
     st.sidebar.title("Exoplanet Explorer")
     st.sidebar.markdown("An interactive tool for exploring exoplanet habitability")
 
-    base_df = load_and_prepare_data()
+    # Main data loading for most pages
+    base_df = load_and_prepare_data()  # This is your original data loader
 
-    if base_df is None or base_df.empty:
-        st.sidebar.error("Data loading failed. Please check data file and try again.")
-        st.error(
-            "Critical error: Exoplanet data could not be loaded. The application cannot proceed."
+    # PCA page uses its own data loader internally for now to match notebook logic.
+    # Ideally, you might want to harmonize data loading if PCA needs the exact same pre-processing
+    # as your `base_df`. For now, we keep them separate as PCA processing has its own nuances from the notebook.
+
+    if base_df is None or base_df.empty:  # Check for main data loading
+        st.sidebar.error(
+            "Data loading failed for main application. Please check data file and try again."
         )
-        return
+        st.error(
+            "Critical error: Main exoplanet data could not be loaded. Some application features may not work."
+        )
+        # Don't return yet, PCA page might still work with its own loader if base_df fails
 
-    # Create feature_options_map_ui from KEY_PARAMETERS_MAP
-    # This map provides user-friendly names for features (e.g., "Planet Radius (ER)")
-    # and maps them to the actual DataFrame column names (e.g., "pl_rade").
     feature_options_map_ui = {}
     if KEY_PARAMETERS_MAP:
         for col_name, details in KEY_PARAMETERS_MAP.items():
@@ -41,15 +51,16 @@ def main():
                 feature_options_map_ui[f"{details['name']} ({details['unit']})"] = (
                     col_name
                 )
-            elif "name" in details:  # Fallback if unit is missing
+            elif "name" in details:
                 feature_options_map_ui[f"{details['name']}"] = col_name
 
-    if not feature_options_map_ui:
+    if not feature_options_map_ui and (
+        base_df is not None and not base_df.empty
+    ):  # Only warn if base_df was expected to work
         st.sidebar.warning(
             "Could not generate feature selection options from KEY_PARAMETERS_MAP."
         )
-        # Provide a default or empty map to prevent errors downstream if KEY_PARAMETERS_MAP is empty/malformed
-        feature_options_map_ui = {
+        feature_options_map_ui = {  # Fallback
             "Planet Radius (ER)": "pl_rade",
             "Equilibrium Temperature (K)": "pl_eqt",
             "Insolation (Earth Flux)": "pl_insol",
@@ -64,7 +75,8 @@ def main():
         "Exoplanet Classification Map",
         "Habitability Analysis & Insights",
         "K-Means Cluster Analysis",
-        "LDA Visualization",  # Added LDA option
+        "LDA Visualization",
+        "PCA Analysis",  # New Page
     ]
     selected_page = st.sidebar.radio(
         "Select Analysis View", page_options, key="main_page_selection"
@@ -73,22 +85,40 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.info("Data Source: NASA Exoplanet Archive (accessed May 20, 2025).")
 
+    # Conditional rendering based on page selection
     if selected_page == "Exoplanet Classification Map":
-        display_exoplanet_classification_map(base_df)
+        if base_df is not None and not base_df.empty:
+            display_exoplanet_classification_map(base_df)
+        else:
+            st.error("Data not available for Exoplanet Classification Map.")
     elif selected_page == "Habitability Analysis & Insights":
-        display_habitability_analysis_dashboard(
-            base_df, KEY_PARAMETERS_MAP, HABITABILITY_THRESHOLDS, CLASSIFICATION_COLORS
-        )
+        if base_df is not None and not base_df.empty:
+            display_habitability_analysis_dashboard(
+                base_df,
+                KEY_PARAMETERS_MAP,
+                HABITABILITY_THRESHOLDS,
+                CLASSIFICATION_COLORS,
+            )
+        else:
+            st.error("Data not available for Habitability Analysis & Insights.")
     elif selected_page == "K-Means Cluster Analysis":
-        # Assuming display_cluster_visualization is updated to accept feature_options_map
-        display_cluster_visualization(base_df, run_clustering, feature_options_map_ui)
-    elif selected_page == "LDA Visualization":  # Added LDA page
-        display_lda_visualization(
-            base_df,
-            run_lda_analysis,  # Pass the LDA processing function
-            feature_options_map_ui,  # Pass the UI map for feature selection
-            CLASSIFICATION_COLORS,  # Pass color mapping for classes
-        )
+        if base_df is not None and not base_df.empty and feature_options_map_ui:
+            display_cluster_visualization(
+                base_df, run_clustering, feature_options_map_ui
+            )
+        else:
+            st.error(
+                "Data or feature options not available for K-Means Cluster Analysis."
+            )
+    elif selected_page == "LDA Visualization":
+        if base_df is not None and not base_df.empty and feature_options_map_ui:
+            display_lda_visualization(
+                base_df, run_lda_analysis, feature_options_map_ui, CLASSIFICATION_COLORS
+            )
+        else:
+            st.error("Data or feature options not available for LDA Visualization.")
+    elif selected_page == "PCA Analysis":  # New Page
+        display_pca_analysis_page()  # This function handles its own data loading internally for now
 
 
 if __name__ == "__main__":

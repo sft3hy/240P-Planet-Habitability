@@ -4,6 +4,9 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 import pandas as pd
+from plotly.subplots import make_subplots  # For PCA 2D projections
+import matplotlib.pyplot as plt  # For the Matplotlib PCA plot
+
 
 from constants import (
     SUN_MARKER_SIZE,
@@ -19,9 +22,19 @@ from constants import (
     CLASSIFICATION_COLORS,  # Make sure this is imported if not already
     HOVER_FONT_COLOR,
     HOVER_BG_COLORS,
+    PCA_RANGE_PREFERENCE_DEFAULT,
+    PCA_GOOD_RANGES_SETS,
+    PCA_CATEGORY_COLORS,
+    PCA_FEATURES,
+    PCA_COMPLETE_CATEGORIES,  # PCA Constants
 )
 
-from data_processing import format_value
+from data_processing import (
+    format_value,  # Keep if used elsewhere
+    load_and_prepare_data_for_pca,
+    categorize_planets_for_pca,
+    perform_pca_analysis,  # PCA data functions
+)
 
 
 def create_sphere_surface(
@@ -713,3 +726,423 @@ def display_lda_visualization(
             st.write(
                 "No LDA loadings to display (e.g., no components or scalings not available)."
             )
+
+
+# --- PCA Visualization Section ---
+
+
+def _create_pca_hover_text_plotly(df_row, pca_coords):
+    """Helper to create hover text for Plotly PCA plots."""
+    hover_text = f"<b>{df_row.get('pl_name', 'N/A')}</b><br>"
+    hover_text += f"Category: {df_row.get('pca_planet_category', 'N/A')}<br>"
+    hover_text += f"<br><b>PCA Coordinates:</b><br>"
+    if pca_coords is not None:
+        for i, coord in enumerate(pca_coords):
+            hover_text += f"PC{i+1}: {coord:.3f}<br>"
+    hover_text += f"<br><b>Planet Properties:</b><br>"
+    hover_text += f"Radius: {df_row.get('pl_rade', 'N/A'):.2f} ER<br>"
+    hover_text += f"Eq. Temp: {df_row.get('pl_eqt', 'N/A'):.1f} K<br>"
+    hover_text += f"Insolation: {df_row.get('pl_insol', 'N/A'):.2f} EF<br>"
+    hover_text += f"Density: {df_row.get('pl_dens', 'N/A'):.2f} g/cm³<br>"
+    hover_text += f"<br><b>Stellar Properties:</b><br>"
+    hover_text += f"Stellar Teff: {df_row.get('st_teff', 'N/A'):.0f} K<br>"
+    hover_text += f"Stellar Radius: {df_row.get('st_rad', 'N/A'):.2f} SR<br>"
+    hover_text += f"Stellar Mass: {df_row.get('st_mass', 'N/A'):.2f} SM<br>"
+    hover_text += f"Metallicity: {df_row.get('st_met', 'N/A'):.2f} dex"
+    return hover_text
+
+
+def display_pca_analysis_page():
+    st.header("Principal Component Analysis (PCA) of Exoplanets")
+    st.markdown(
+        """
+    PCA is an unsupervised dimensionality reduction technique. It transforms the data into a new set of orthogonal variables 
+    (principal components, PCs) ordered by the amount of variance they explain. 
+    Here, we apply PCA to the 8 key habitability parameters using a custom categorization.
+    """
+    )
+
+    # --- Controls ---
+    st.sidebar.subheader("PCA Settings")
+    range_preference_options = list(PCA_GOOD_RANGES_SETS.keys())
+    range_preference = st.sidebar.selectbox(
+        "Select Habitability Range Preference:",
+        options=range_preference_options,
+        index=range_preference_options.index(PCA_RANGE_PREFERENCE_DEFAULT),
+        key="pca_range_pref",
+    )
+
+    plot_type_options = [
+        "2D PCA Plot (Matplotlib)",
+        "3D Interactive PCA Plot (Plotly)",
+        "2D Interactive PCA Projections (Plotly)",
+    ]
+    selected_plot_type = st.sidebar.selectbox(
+        "Select PCA Plot Type:", options=plot_type_options, key="pca_plot_type"
+    )
+
+    # --- Data Loading and Processing ---
+    # Use the dedicated PCA data loader for now
+    df_pca_initial = load_and_prepare_data_for_pca()
+    if df_pca_initial is None:
+        st.error("Failed to load data for PCA analysis.")
+        return
+
+    df_categorized = categorize_planets_for_pca(df_pca_initial, range_preference)
+    if df_categorized is None:
+        st.error("Failed to categorize planets for PCA.")
+        return
+
+    st.subheader(f"Category Distribution (using '{range_preference}' ranges)")
+    if "pca_planet_category" in df_categorized.columns:
+        category_counts = (
+            df_categorized["pca_planet_category"].value_counts().sort_index()
+        )
+        st.dataframe(category_counts)
+    else:
+        st.warning("Planet categories for PCA not generated.")
+
+    # Perform PCA (request 3 components for 3D/projections, 2 for 2D Matplotlib if strict)
+    n_pca_components = (
+        3 if "3D" in selected_plot_type or "Projections" in selected_plot_type else 2
+    )
+    X_pca_transformed, pca_model, scaler, df_pca_final = perform_pca_analysis(
+        df_categorized, n_components=n_pca_components
+    )
+
+    if X_pca_transformed is None or df_pca_final.empty:
+        st.warning(
+            "PCA could not be performed or no data available after filtering for the selected plot."
+        )
+        return
+
+    # --- Plotting ---
+    st.subheader(f"Displaying: {selected_plot_type}")
+
+    earth_row_pca = df_pca_final[
+        df_pca_final["pl_name"].str.contains(
+            "Earth \(Sol System\)", case=False, na=False
+        )
+    ]
+    if not earth_row_pca.empty:
+        st.write(
+            f"**Earth (Sol System)** is classified as: **{earth_row_pca['pca_planet_category'].iloc[0]}** under '{range_preference}' ranges for PCA."
+        )
+
+    if selected_plot_type == "2D PCA Plot (Matplotlib)":
+        _display_2d_pca_matplotlib(df_pca_final, pca_model, range_preference)
+    elif selected_plot_type == "3D Interactive PCA Plot (Plotly)":
+        _display_3d_pca_plotly(df_pca_final, pca_model, range_preference)
+    elif selected_plot_type == "2D Interactive PCA Projections (Plotly)":
+        _display_2d_projections_plotly(df_pca_final, pca_model, range_preference)
+
+    # Display explained variance and loadings
+    if pca_model:
+        st.subheader("PCA Explained Variance")
+        variance_data = {
+            f"PC{i+1}": f"{ratio*100:.1f}%"
+            for i, ratio in enumerate(pca_model.explained_variance_ratio_)
+        }
+        st.json(variance_data)
+        st.write(
+            f"**Total Variance Explained by {pca_model.n_components_} components: {pca_model.explained_variance_ratio_.sum()*100:.1f}%**"
+        )
+
+        st.subheader("PCA Feature Loadings")
+        st.markdown(
+            "Loadings show how much each original feature contributes to each Principal Component."
+        )
+        loadings_df = pd.DataFrame(
+            pca_model.components_.T,
+            columns=[f"PC{i+1}" for i in range(pca_model.n_components_)],
+            index=PCA_FEATURES,
+        )
+        st.dataframe(
+            loadings_df.style.format("{:.3f}").background_gradient(
+                cmap="viridis", axis=0
+            )
+        )
+
+
+def _display_2d_pca_matplotlib(df_plot_data, pca_model, range_preference):
+    if df_plot_data.empty or pca_model is None or pca_model.n_components_ < 2:
+        st.warning("Not enough data or PCA components for 2D Matplotlib plot.")
+        return
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    y_categories = df_plot_data["pca_planet_category"]
+
+    for category_name in PCA_COMPLETE_CATEGORIES:  # Use predefined order if desired
+        mask = y_categories == category_name
+        if mask.any():
+            color = PCA_CATEGORY_COLORS.get(category_name, "gray")
+            ax.scatter(
+                df_plot_data.loc[mask, "PC1"],
+                df_plot_data.loc[mask, "PC2"],
+                c=color,
+                label=f"{category_name} (n={mask.sum()})",
+                alpha=0.7,
+                s=60,
+                edgecolor="black",
+                linewidth=0.5,
+            )
+
+    earth_row = df_plot_data[
+        df_plot_data["pl_name"].str.contains(
+            "Earth \(Sol System\)", case=False, na=False
+        )
+    ]
+    if not earth_row.empty:
+        ax.scatter(
+            earth_row["PC1"].iloc[0],
+            earth_row["PC2"].iloc[0],
+            c="red",
+            s=300,
+            marker="*",
+            edgecolor="black",
+            linewidth=2,
+            label="Earth (Sol System)",
+            zorder=5,
+        )
+
+    ax.set_xlabel(
+        f"PC1 ({pca_model.explained_variance_ratio_[0]*100:.1f}% variance)", fontsize=12
+    )
+    ax.set_ylabel(
+        f"PC2 ({pca_model.explained_variance_ratio_[1]*100:.1f}% variance)", fontsize=12
+    )
+    ax.set_title(
+        f"2D PCA: Exoplanets by Classification ({range_preference.title()} Ranges)",
+        fontsize=14,
+        fontweight="bold",
+    )
+    ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    st.pyplot(fig)
+
+
+def _display_3d_pca_plotly(df_plot_data, pca_model, range_preference):
+    if df_plot_data.empty or pca_model is None or pca_model.n_components_ < 3:
+        st.warning(
+            "Not enough data or PCA components for 3D Plotly plot. Need at least 3 PCs."
+        )
+        return
+
+    fig_plotly = go.Figure()
+    y_categories = df_plot_data["pca_planet_category"]
+
+    for category_name in PCA_COMPLETE_CATEGORIES:
+        mask = y_categories == category_name
+        if mask.any():
+            color = PCA_CATEGORY_COLORS.get(category_name, "gray")
+            # Create hover texts for this category
+            hover_texts_cat = [
+                _create_pca_hover_text_plotly(
+                    df_plot_data.loc[idx],
+                    [
+                        df_plot_data.loc[idx, "PC1"],
+                        df_plot_data.loc[idx, "PC2"],
+                        df_plot_data.loc[idx, "PC3"],
+                    ],
+                )
+                for idx in df_plot_data[mask].index
+            ]
+
+            fig_plotly.add_trace(
+                go.Scatter3d(
+                    x=df_plot_data.loc[mask, "PC1"],
+                    y=df_plot_data.loc[mask, "PC2"],
+                    z=df_plot_data.loc[mask, "PC3"],
+                    mode="markers",
+                    marker=dict(
+                        size=6,
+                        color=color,
+                        opacity=0.8,
+                        line=dict(width=0.5, color="black"),
+                    ),
+                    name=f"{category_name} (n={mask.sum()})",
+                    text=hover_texts_cat,
+                    hovertemplate="%{text}<extra></extra>",
+                )
+            )
+
+    earth_row = df_plot_data[
+        df_plot_data["pl_name"].str.contains(
+            "Earth \(Sol System\)", case=False, na=False
+        )
+    ]
+    if not earth_row.empty:
+        earth_hover_text = _create_pca_hover_text_plotly(
+            earth_row.iloc[0],
+            [
+                earth_row["PC1"].iloc[0],
+                earth_row["PC2"].iloc[0],
+                earth_row["PC3"].iloc[0],
+            ],
+        )
+        fig_plotly.add_trace(
+            go.Scatter3d(
+                x=[earth_row["PC1"].iloc[0]],
+                y=[earth_row["PC2"].iloc[0]],
+                z=[earth_row["PC3"].iloc[0]],
+                mode="markers",
+                marker=dict(
+                    size=15,
+                    color="red",
+                    symbol="diamond",
+                    opacity=1.0,
+                    line=dict(width=3, color="black"),
+                ),
+                name="Earth (Sol System)",
+                text=[earth_hover_text],
+                hovertemplate="%{text}<extra></extra>",
+            )
+        )
+
+    fig_plotly.update_layout(
+        title=dict(
+            text=f"Interactive 3D PCA ({range_preference.title()} Ranges)", x=0.5
+        ),
+        scene=dict(
+            xaxis_title=f"PC1 ({pca_model.explained_variance_ratio_[0]*100:.1f}%)",
+            yaxis_title=f"PC2 ({pca_model.explained_variance_ratio_[1]*100:.1f}%)",
+            zaxis_title=f"PC3 ({pca_model.explained_variance_ratio_[2]*100:.1f}%)",
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.5)),
+            aspectmode="cube",
+        ),
+        legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.02),
+        margin=dict(l=0, r=0, b=0, t=40),
+    )
+    st.plotly_chart(fig_plotly, use_container_width=True)
+
+
+def _display_2d_projections_plotly(df_plot_data, pca_model, range_preference):
+    if df_plot_data.empty or pca_model is None or pca_model.n_components_ < 3:
+        st.warning(
+            "Not enough data or PCA components for 2D Projections. Need at least 3 PCs."
+        )
+        return
+
+    fig_subplots = make_subplots(
+        rows=2,
+        cols=2,
+        subplot_titles=["PC1 vs PC2", "PC1 vs PC3", "PC2 vs PC3", "Variance Explained"],
+        specs=[
+            [{"type": "scatter"}, {"type": "scatter"}],
+            [{"type": "scatter"}, {"type": "bar"}],
+        ],
+    )
+    y_categories = df_plot_data["pca_planet_category"]
+
+    plot_pairs = [(0, 1), (0, 2), (1, 2)]  # PC1 vs PC2, PC1 vs PC3, PC2 vs PC3
+    subplot_positions = [(1, 1), (1, 2), (2, 1)]
+
+    for i, (pc_x_idx, pc_y_idx) in enumerate(plot_pairs):
+        row, col = subplot_positions[i]
+        pc_x_name, pc_y_name = f"PC{pc_x_idx+1}", f"PC{pc_y_idx+1}"
+
+        for category_name in PCA_COMPLETE_CATEGORIES:
+            mask = y_categories == category_name
+            if mask.any():
+                color = PCA_CATEGORY_COLORS.get(category_name, "gray")
+                hover_texts_cat = [
+                    _create_pca_hover_text_plotly(
+                        df_plot_data.loc[idx],
+                        [
+                            df_plot_data.loc[idx, "PC1"],
+                            df_plot_data.loc[idx, "PC2"],
+                            df_plot_data.loc[idx, "PC3"],
+                        ],
+                    )
+                    for idx in df_plot_data[mask].index
+                ]
+
+                fig_subplots.add_trace(
+                    go.Scatter(
+                        x=df_plot_data.loc[mask, pc_x_name],
+                        y=df_plot_data.loc[mask, pc_y_name],
+                        mode="markers",
+                        marker=dict(
+                            color=color,
+                            size=8,
+                            opacity=0.7,
+                            line=dict(width=0.5, color="black"),
+                        ),
+                        name=category_name,
+                        text=hover_texts_cat,
+                        hovertemplate="%{text}<extra></extra>",
+                        showlegend=(i == 0),  # Show legend only on the first subplot
+                    ),
+                    row=row,
+                    col=col,
+                )
+
+        earth_row = df_plot_data[
+            df_plot_data["pl_name"].str.contains(
+                "Earth \(Sol System\)", case=False, na=False
+            )
+        ]
+        if not earth_row.empty:
+            earth_hover_text = _create_pca_hover_text_plotly(
+                earth_row.iloc[0],
+                [
+                    earth_row["PC1"].iloc[0],
+                    earth_row["PC2"].iloc[0],
+                    earth_row["PC3"].iloc[0],
+                ],
+            )
+            fig_subplots.add_trace(
+                go.Scatter(
+                    x=[earth_row[pc_x_name].iloc[0]],
+                    y=[earth_row[pc_y_name].iloc[0]],
+                    mode="markers",
+                    marker=dict(
+                        color="red",
+                        size=15,
+                        symbol="star",
+                        line=dict(width=2, color="black"),
+                    ),
+                    name="Earth (Sol System)",
+                    text=[earth_hover_text],
+                    hovertemplate="%{text}<extra></extra>",
+                    showlegend=False,
+                ),
+                row=row,
+                col=col,
+            )
+
+        fig_subplots.update_xaxes(
+            title_text=f"{pc_x_name} ({pca_model.explained_variance_ratio_[pc_x_idx]*100:.1f}%)",
+            row=row,
+            col=col,
+        )
+        fig_subplots.update_yaxes(
+            title_text=f"{pc_y_name} ({pca_model.explained_variance_ratio_[pc_y_idx]*100:.1f}%)",
+            row=row,
+            col=col,
+        )
+
+    # Variance explained bar chart
+    fig_subplots.add_trace(
+        go.Bar(
+            x=[f"PC{i+1}" for i in range(pca_model.n_components_)],
+            y=pca_model.explained_variance_ratio_ * 100,
+            marker_color=["steelblue", "lightcoral", "gold"][: pca_model.n_components_],
+            name="Variance Explained",
+            showlegend=False,
+            text=[f"{var:.1f}%" for var in pca_model.explained_variance_ratio_ * 100],
+            textposition="auto",
+        ),
+        row=2,
+        col=2,
+    )
+    fig_subplots.update_xaxes(title_text="Principal Component", row=2, col=2)
+    fig_subplots.update_yaxes(title_text="Variance Explained (%)", row=2, col=2)
+
+    fig_subplots.update_layout(
+        title_text=f"2D PCA Projections ({range_preference.title()} Ranges, Total: {pca_model.explained_variance_ratio_.sum()*100:.1f}% variance)",
+        height=800,
+        legend_title_text="Planet Category",
+    )
+    st.plotly_chart(fig_subplots, use_container_width=True)

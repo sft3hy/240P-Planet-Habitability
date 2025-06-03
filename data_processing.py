@@ -6,6 +6,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis  # New Import
 import streamlit as st
 import warnings
+from sklearn.impute import SimpleImputer  # For PCA
+from sklearn.decomposition import PCA  # For PCA
 
 from constants import (
     PARSEC_TO_LY,
@@ -14,6 +16,9 @@ from constants import (
     DEFAULT_PLANET_MARKER_SIZE,
     EXCELLENT_CANDIDATE_MARKER_SIZE,
     EARTH_MARKER_SIZE,
+    PCA_GOOD_RANGES_SETS,
+    PCA_FEATURES,
+    PCA_COMPLETE_CATEGORIES,  # PCA Constants
 )
 
 warnings.filterwarnings(
@@ -396,3 +401,189 @@ def run_lda_analysis(
         return df, None, 0, [], messages
 
     return df, lda_model, actual_n_components, explained_variance_ratio, messages
+
+
+# --- PCA Specific Data Processing ---
+@st.cache_data
+def load_and_prepare_data_for_pca(
+    file_path="data/Planetary-Systems-May-20-2025_clean.csv",
+):
+    """
+    Loads data specifically for PCA, similar to the notebook's version.
+    Adds Earth with complete stellar parameters if not found.
+    """
+    try:
+        df = pd.read_csv(file_path)
+    except FileNotFoundError:
+        st.error(f"PCA Data Error: File '{file_path}' not found.")
+        return None
+    if df.empty:
+        st.warning("PCA Data: Loaded DataFrame is empty.")
+        return None
+
+    # Use a simplified Earth name for matching that aligns with your main load_and_prepare_data
+    # to avoid duplicate Earths if using the same base_df later.
+    # However, the notebook uses "Earth (Sol System)". We'll stick to notebook for this isolated function.
+    earth_data_complete = {
+        "pl_name": "Earth (Sol System)",
+        "hostname": "Sol",  # Added hostname for consistency
+        "sy_dist": 0.0,
+        "sy_dist_ly": 0.0,
+        "ra": 0.0,
+        "dec": 0.0,
+        "pl_rade": 1.0,
+        "pl_eqt": 288.0,
+        "pl_insol": 1.0,
+        "pl_dens": 5.51,
+        "st_teff": 5778.0,
+        "st_rad": 1.0,
+        "st_mass": 1.0,
+        "st_met": 0.0,
+        "glon": np.nan,
+        "glat": np.nan,
+    }
+    # Ensure all PCA_FEATURES are in earth_data, add with NaN if not (though they are)
+    for feat in PCA_FEATURES:
+        if feat not in earth_data_complete:
+            earth_data_complete[feat] = np.nan
+
+    # Check if "Earth (Sol System)" specifically is present
+    earth_specific_mask = df["pl_name"].astype(str) == "Earth (Sol System)"
+    if not earth_specific_mask.any():
+        earth_df_row = pd.DataFrame([earth_data_complete])
+        df = pd.concat([df, earth_df_row], ignore_index=True)
+        # st.info("PCA Data: Added 'Earth (Sol System)' to the dataset for PCA analysis.") # Optional info
+    else:  # Update existing "Earth (Sol System)" if found
+        earth_idx = df[earth_specific_mask].index[0]
+        for col, val in earth_data_complete.items():
+            if col in df.columns:
+                df.loc[earth_idx, col] = val
+            # else: # If adding new columns, this would be needed.
+            #    df[col] = pd.NA
+            #    df.loc[earth_idx, col] = val
+
+    # If sy_dist_ly is not present, calculate it (as in notebook)
+    if "sy_dist_ly" not in df.columns and "sy_dist" in df.columns:
+        df["sy_dist_ly"] = (
+            df["sy_dist"] * PARSEC_TO_LY
+        )  # Ensure PARSEC_TO_LY is available
+
+    return df.copy()  # Return a copy
+
+
+def categorize_planets_for_pca(df, range_preference):
+    """Categorize planets based on habitability criteria for PCA."""
+    if df is None or df.empty:
+        return None
+
+    good_ranges = PCA_GOOD_RANGES_SETS.get(range_preference)
+    if not good_ranges:
+        st.error(f"Invalid range preference for PCA: {range_preference}")
+        return df  # return df without new category
+
+    categories = []
+    df_copy = df.copy()
+
+    for _, row in df_copy.iterrows():
+        planetary_features = ["pl_rade", "pl_eqt", "pl_insol", "pl_dens"]
+        stellar_features = ["st_teff", "st_rad", "st_mass", "st_met"]
+
+        missing_data_for_categorization = any(
+            pd.isna(row[feat]) for feat in PCA_FEATURES if feat in row
+        )
+
+        if missing_data_for_categorization:
+            categories.append("Missing Data")
+            continue
+
+        planetary_good = all(
+            good_ranges[feat][0] <= row[feat] <= good_ranges[feat][1]
+            for feat in planetary_features
+            if feat in good_ranges and feat in row and pd.notna(row[feat])
+        )
+        stellar_good = all(
+            good_ranges[feat][0] <= row[feat] <= good_ranges[feat][1]
+            for feat in stellar_features
+            if feat in good_ranges and feat in row and pd.notna(row[feat])
+        )
+
+        if planetary_good and stellar_good:
+            categories.append("Excellent Candidate")
+        elif planetary_good:
+            categories.append("Good Planet, Poor Star")
+        elif stellar_good:
+            categories.append("Good Star, Poor Planet")
+        else:
+            temp = row.get("pl_eqt")
+            rade = row.get("pl_rade")
+            if pd.notna(temp) and temp < good_ranges["pl_eqt"][0]:
+                categories.append("Too Cold")
+            elif pd.notna(temp) and temp > good_ranges["pl_eqt"][1]:
+                categories.append("Too Hot")
+            elif pd.notna(rade) and rade > good_ranges["pl_rade"][1]:
+                categories.append("Too Large (Gas Giant)")
+            elif pd.notna(rade) and rade < good_ranges["pl_rade"][0]:
+                categories.append("Too Small")
+            else:
+                categories.append("Other Issues")
+
+    df_copy["pca_planet_category"] = categories
+    return df_copy
+
+
+@st.cache_data
+def perform_pca_analysis(_df_input, n_components=3):
+    """
+    Performs PCA on the provided DataFrame after categorization and preprocessing.
+    Assumes 'pca_planet_category' column exists.
+    """
+    if _df_input is None or "pca_planet_category" not in _df_input.columns:
+        st.warning(
+            "PCA Analysis: Input DataFrame is missing or 'pca_planet_category' column not found."
+        )
+        return None, None, None, pd.DataFrame()
+
+    df_complete = _df_input[
+        _df_input["pca_planet_category"].isin(PCA_COMPLETE_CATEGORIES)
+    ].copy()
+
+    if df_complete.empty:
+        st.info(
+            "PCA Analysis: No planets with complete data for selected categories and PCA features."
+        )
+        return None, None, None, pd.DataFrame()
+
+    # Ensure all PCA_FEATURES are present in df_complete
+    missing_pca_features = [f for f in PCA_FEATURES if f not in df_complete.columns]
+    if missing_pca_features:
+        st.error(
+            f"PCA Analysis: DataFrame is missing required features for PCA: {', '.join(missing_pca_features)}"
+        )
+        return None, None, None, pd.DataFrame()
+
+    X = df_complete[PCA_FEATURES]
+
+    # Impute and Scale
+    imputer = SimpleImputer(strategy="median")
+    X_imputed = imputer.fit_transform(X)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_imputed)
+
+    # Perform PCA
+    try:
+        pca = PCA(n_components=n_components)
+        X_pca = pca.fit_transform(X_scaled)
+    except Exception as e:
+        st.error(f"Error during PCA calculation: {e}")
+        return (
+            None,
+            None,
+            None,
+            df_complete,
+        )  # return df_complete for potential debugging
+
+    # Add PCA components to df_complete
+    for i in range(X_pca.shape[1]):
+        df_complete[f"PC{i+1}"] = X_pca[:, i]
+
+    return X_pca, pca, scaler, df_complete
