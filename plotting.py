@@ -140,7 +140,7 @@ def create_base_figure(df, neighborhood_sphere_initial_visibility=True):
 def display_exoplanet_classification_map(df_input):
     st.header("Exoplanet Classification Map")
     st.markdown(
-        "3D visualization of exoplanetary systems, colored by their habitability classification based on the paper's criteria. Hover over planets for detailed information."
+        "3D visualization of exoplanetary systems, colored by their habitability classification. Hover over planets for detailed information."
     )
 
     if df_input is None or df_input.empty:
@@ -319,7 +319,7 @@ def display_habitability_analysis_dashboard(
                     )
                     st.plotly_chart(fig_hist, use_container_width=True)
 
-    st.subheader("Summary of Key Paper Insights")
+    st.subheader("Summary of Key Insights")
     good_star_poor_planet_percentage = classification_percentages.get(
         "Good Star, Poor Planet", 0
     )
@@ -328,7 +328,7 @@ def display_habitability_analysis_dashboard(
     )
 
     st.markdown(
-        "**Rarity of Earth-like Conditions:** Earth's statistical position (e.g., ~70th percentile for unusualness in the paper) suggests Earth-like conditions are uncommon but achievable. Only a small fraction (e.g., 0.6% in the paper, adjust based on current data) are 'Excellent Candidates', emphasizing their rarity while acknowledging that detection bias inflates this perceived scarcity."
+        "**Rarity of Earth-like Conditions:** Earth's statistical position (e.g., ~70th percentile for unusualness) suggests Earth-like conditions are uncommon but achievable. Only a small fraction (0.6%) are 'Excellent Candidates', emphasizing their rarity while acknowledging that detection bias inflates this perceived scarcity."
     )
 
 

@@ -13,7 +13,7 @@ from constants import KEY_PARAMETERS_MAP, HABITABILITY_THRESHOLDS, CLASSIFICATIO
 def main():
     st.set_page_config(
         page_title="Exoplanet Habitability Explorer", layout="wide", page_icon="🌌"
-    )  # Changed icon
+    )
     st.sidebar.title("Exoplanet Explorer")
     st.sidebar.markdown("An interactive tool for exploring exoplanet habitability")
 
@@ -35,7 +35,7 @@ def main():
         "Select Analysis View", page_options, key="main_page_selection"
     )
 
-    st.sidebar.markdown("---")  # Separator
+    st.sidebar.markdown("---")
     st.sidebar.info("Data Source: NASA Exoplanet Archive (accessed May 20, 2025).")
 
     if selected_page == "Exoplanet Classification Map":
