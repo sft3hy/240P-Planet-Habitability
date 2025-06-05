@@ -272,59 +272,14 @@ def display_habitability_analysis_dashboard(
     st.markdown(
         "Histograms for the 8 key parameters. Earth's value is marked (red dashed line), and habitability thresholds are shaded (green)."
     )
-
-    num_cols_hist = 2
-    param_keys = list(param_map.keys())
-    for i in range(0, len(param_keys), num_cols_hist):
-        cols = st.columns(num_cols_hist)
-        for j in range(num_cols_hist):
-            if i + j < len(param_keys):
-                param_col_name = param_keys[i + j]
-                with cols[j]:
-                    param_details = param_map[param_col_name]
-                    param_threshold_values = thresholds[param_col_name]
-
-                    fig_hist = px.histogram(
-                        df,
-                        x=param_col_name,
-                        color="classification_category",
-                        marginal="rug",
-                        color_discrete_map=classification_colors,
-                        labels={
-                            param_col_name: f"{param_details['name']} ({param_details['unit']})"
-                        },
-                        opacity=0.7,
-                        barmode="overlay",
-                    )
-                    fig_hist.update_layout(
-                        title_text=f"{param_details['name']}",
-                        xaxis_title_text=f"{param_details['name']} ({param_details['unit']})",
-                        yaxis_title_text="Count",
-                        legend_title_text="Classification",
-                    )
-                    if not earth_row.empty and pd.notna(
-                        earth_row[param_col_name].iloc[0]
-                    ):
-                        earth_val = earth_row[param_col_name].iloc[0]
-                        fig_hist.add_vline(
-                            x=earth_val,
-                            line_width=2,
-                            line_dash="dash",
-                            line_color="red",
-                            annotation_text="Earth",
-                            annotation_position="top right",
-                        )
-                    fig_hist.add_vrect(
-                        x0=param_threshold_values["min"],
-                        x1=param_threshold_values["max"],
-                        fillcolor="green",
-                        opacity=0.15,
-                        layer="below",
-                        line_width=0,
-                        annotation_text="Habitable Range",
-                        annotation_position="top left",
-                    )
-                    st.plotly_chart(fig_hist, use_container_width=True)
+    st.image("Images/eq_temp.png")
+    st.image("Images/insol_flux.png")
+    st.image("Images/planet_density.png")
+    st.image("Images/planet_radius.png")
+    st.image("Images/stellar_mass.png")
+    st.image("Images/stellar_met.png")
+    st.image("Images/stellar_radius.png")
+    st.image("Images/stellar_temp.png")
 
     st.subheader("Summary of Key Insights")
     good_star_poor_planet_percentage = classification_percentages.get(
@@ -1080,7 +1035,7 @@ def _display_2d_projections_plotly(df_plot_data, pca_model, range_preference):
 
         earth_row = df_plot_data[
             df_plot_data["pl_name"].str.contains(
-                "Earth \(Sol System\)", case=False, na=False
+                "Earth (Sol System)", case=False, na=False
             )
         ]
         if not earth_row.empty:
