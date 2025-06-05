@@ -775,9 +775,7 @@ def display_pca_analysis_page():
     st.subheader(f"Displaying: {selected_plot_type}")
 
     earth_row_pca = df_pca_final[
-        df_pca_final["pl_name"].str.contains(
-            "Earth \(Sol System\)", case=False, na=False
-        )
+        df_pca_final["pl_name"].str.contains("Earth (Sol System)", case=False, na=False)
     ]
     if not earth_row_pca.empty:
         st.write(
@@ -843,9 +841,7 @@ def _display_2d_pca_matplotlib(df_plot_data, pca_model, range_preference):
             )
 
     earth_row = df_plot_data[
-        df_plot_data["pl_name"].str.contains(
-            "Earth \(Sol System\)", case=False, na=False
-        )
+        df_plot_data["pl_name"].str.contains("Earth (Sol System)", case=False, na=False)
     ]
     if not earth_row.empty:
         ax.scatter(
@@ -923,9 +919,7 @@ def _display_3d_pca_plotly(df_plot_data, pca_model, range_preference):
             )
 
     earth_row = df_plot_data[
-        df_plot_data["pl_name"].str.contains(
-            "Earth \(Sol System\)", case=False, na=False
-        )
+        df_plot_data["pl_name"].str.contains("Earth (Sol System)", case=False, na=False)
     ]
     if not earth_row.empty:
         earth_hover_text = _create_pca_hover_text_plotly(
