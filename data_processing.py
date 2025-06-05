@@ -3,11 +3,11 @@ import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis  # New Import
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 import streamlit as st
 import warnings
-from sklearn.impute import SimpleImputer  # For PCA
-from sklearn.decomposition import PCA  # For PCA
+from sklearn.impute import SimpleImputer
+from sklearn.decomposition import PCA
 
 from constants import (
     PARSEC_TO_LY,
@@ -18,7 +18,7 @@ from constants import (
     EARTH_MARKER_SIZE,
     PCA_GOOD_RANGES_SETS,
     PCA_FEATURES,
-    PCA_COMPLETE_CATEGORIES,  # PCA Constants
+    PCA_COMPLETE_CATEGORIES,
 )
 
 warnings.filterwarnings(
@@ -29,11 +29,11 @@ warnings.filterwarnings(
     category=UserWarning,
     message="KMeans is known to have a memory leak on Windows with MKL",
 )
-# Add UserWarning ignore for LDA singular matrix
+
 warnings.filterwarnings(
     "ignore",
     category=UserWarning,
-    message="Variables are collinear.",  # sklearn.discriminant_analysis
+    message="Variables are collinear.",
 )
 
 
@@ -71,7 +71,7 @@ def classify_exoplanet(row, thresholds, param_map):
         return "Unclassified (Missing Data)"
 
     for param_key, details in param_map.items():
-        value = row.get(param_key)  # Already checked for NaN above overall
+        value = row.get(param_key)
         param_range = thresholds[param_key]
         if not (param_range["min"] <= value <= param_range["max"]):
             if details["type"] == "planetary":
@@ -85,7 +85,7 @@ def classify_exoplanet(row, thresholds, param_map):
         return "Good Planet, Poor Star"
     elif p_good == 0 and s_good == 1:
         return "Good Star, Poor Planet"
-    else:  # p_good == 0 and s_good == 0
+    else:
         return "Poor Candidate"
 
 
@@ -117,7 +117,7 @@ def load_and_prepare_data(file_path="data/Planetary-Systems-May-20-2025_clean.cs
 
     earth_data = {
         "pl_name": "Earth",
-        "hostname": "Sol",  # Simplified name
+        "hostname": "Sol",
         "sy_dist": 0.0,
         "sy_dist_ly": 0.0,
         "ra": 0.0,
@@ -269,14 +269,12 @@ def run_lda_analysis(
     df = _df_input.copy()
 
     # Initialize LDA component columns in the main DataFrame
-    lda_col_names = [
-        f"lda_comp_{i+1}" for i in range(n_components_to_request)
-    ]  # Initialize based on request
+    lda_col_names = [f"lda_comp_{i+1}" for i in range(n_components_to_request)]
     for col_name in lda_col_names:
         df[col_name] = np.nan
 
     lda_model = None
-    actual_n_components = 0  # Will be set after LDA transform
+    actual_n_components = 0
     explained_variance_ratio = []
     messages = {"warning": [], "error": [], "info": []}
 
@@ -330,41 +328,29 @@ def run_lda_analysis(
     # Determine the actual number of components LDA will attempt to compute
     n_components_for_lda = min(n_components_to_request, max_possible_components)
 
-    if (
-        n_components_for_lda < 1
-    ):  # Should be caught by max_possible_components < 1, but as a safeguard
+    if n_components_for_lda < 1:
         messages["warning"].append(
             "LDA: Effective number of components to compute is less than 1."
         )
         return df, lda_model, actual_n_components, explained_variance_ratio, messages
 
     try:
-        # When solver='svd', n_components is the number of components to keep.
-        # It cannot be larger than min(n_features, n_classes - 1).
-        # If n_components is not specified, it is set to min(n_features, n_classes - 1).
         lda = LinearDiscriminantAnalysis(
             n_components=n_components_for_lda, solver="svd"
         )
         X_lda = lda.fit_transform(X_scaled, y)
 
         lda_model = lda
-        # The actual number of components produced by transform is X_lda.shape[1]
-        actual_n_components = X_lda.shape[1]
 
-        # Re-initialize LDA component columns in the main DataFrame based on actual_n_components
-        # This is important if actual_n_components < n_components_to_request
-        # First, remove any pre-initialized columns if they were more than actual
+        actual_n_components = X_lda.shape[1]
         for i in range(actual_n_components, n_components_to_request):
             col_to_remove = f"lda_comp_{i+1}"
             if col_to_remove in df.columns:
                 del df[col_to_remove]
 
-        # Now, ensure columns for actual components exist
         for i in range(actual_n_components):
             col_name = f"lda_comp_{i+1}"
-            if (
-                col_name not in df.columns
-            ):  # Should exist from initial pre-allocation if actual <= requested
+            if col_name not in df.columns:
                 df[col_name] = np.nan
 
         explained_variance_ratio = (
@@ -381,9 +367,7 @@ def run_lda_analysis(
             messages["info"].append(
                 f"LDA: Requested {n_components_to_request} components, but computed {actual_n_components} due to data structure (e.g., max possible is {max_possible_components} or collinearity reduced effective components)."
             )
-        elif (
-            n_components_for_lda < n_components_to_request
-        ):  # Implies max_possible_components was the limiter
+        elif n_components_for_lda < n_components_to_request:
             messages["info"].append(
                 f"LDA: Requested {n_components_to_request} components, computed {actual_n_components} (max possible for this data was {max_possible_components})."
             )
@@ -395,9 +379,6 @@ def run_lda_analysis(
         return df, None, 0, [], messages
     except Exception as e:
         messages["error"].append(f"An unexpected error occurred during LDA: {e}")
-        # Log the full traceback for debugging if needed:
-        # import traceback
-        # messages["error"].append(f"Traceback: {traceback.format_exc()}")
         return df, None, 0, [], messages
 
     return df, lda_model, actual_n_components, explained_variance_ratio, messages
@@ -421,12 +402,9 @@ def load_and_prepare_data_for_pca(
         st.warning("PCA Data: Loaded DataFrame is empty.")
         return None
 
-    # Use a simplified Earth name for matching that aligns with your main load_and_prepare_data
-    # to avoid duplicate Earths if using the same base_df later.
-    # However, the notebook uses "Earth (Sol System)". We'll stick to notebook for this isolated function.
     earth_data_complete = {
         "pl_name": "Earth (Sol System)",
-        "hostname": "Sol",  # Added hostname for consistency
+        "hostname": "Sol",
         "sy_dist": 0.0,
         "sy_dist_ly": 0.0,
         "ra": 0.0,
@@ -442,33 +420,26 @@ def load_and_prepare_data_for_pca(
         "glon": np.nan,
         "glat": np.nan,
     }
-    # Ensure all PCA_FEATURES are in earth_data, add with NaN if not (though they are)
+
     for feat in PCA_FEATURES:
         if feat not in earth_data_complete:
             earth_data_complete[feat] = np.nan
 
-    # Check if "Earth (Sol System)" specifically is present
     earth_specific_mask = df["pl_name"].astype(str) == "Earth (Sol System)"
     if not earth_specific_mask.any():
         earth_df_row = pd.DataFrame([earth_data_complete])
         df = pd.concat([df, earth_df_row], ignore_index=True)
-        # st.info("PCA Data: Added 'Earth (Sol System)' to the dataset for PCA analysis.") # Optional info
-    else:  # Update existing "Earth (Sol System)" if found
+
+    else:
         earth_idx = df[earth_specific_mask].index[0]
         for col, val in earth_data_complete.items():
             if col in df.columns:
                 df.loc[earth_idx, col] = val
-            # else: # If adding new columns, this would be needed.
-            #    df[col] = pd.NA
-            #    df.loc[earth_idx, col] = val
 
-    # If sy_dist_ly is not present, calculate it (as in notebook)
     if "sy_dist_ly" not in df.columns and "sy_dist" in df.columns:
-        df["sy_dist_ly"] = (
-            df["sy_dist"] * PARSEC_TO_LY
-        )  # Ensure PARSEC_TO_LY is available
+        df["sy_dist_ly"] = df["sy_dist"] * PARSEC_TO_LY
 
-    return df.copy()  # Return a copy
+    return df.copy()
 
 
 def categorize_planets_for_pca(df, range_preference):
@@ -479,7 +450,7 @@ def categorize_planets_for_pca(df, range_preference):
     good_ranges = PCA_GOOD_RANGES_SETS.get(range_preference)
     if not good_ranges:
         st.error(f"Invalid range preference for PCA: {range_preference}")
-        return df  # return df without new category
+        return df
 
     categories = []
     df_copy = df.copy()
@@ -580,9 +551,8 @@ def perform_pca_analysis(_df_input, n_components=3):
             None,
             None,
             df_complete,
-        )  # return df_complete for potential debugging
+        )
 
-    # Add PCA components to df_complete
     for i in range(X_pca.shape[1]):
         df_complete[f"PC{i+1}"] = X_pca[:, i]
 

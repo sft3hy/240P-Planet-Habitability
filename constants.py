@@ -1,9 +1,9 @@
 # constants.py
 
-# --- Physical Constants ---
+# --- Physical Constants
 PARSEC_TO_LY = 3.26156
 
-# --- Habitability Thresholds (from the paper's "very relaxed" criteria) ---
+# --- Habitability Thresholds
 HABITABILITY_THRESHOLDS = {
     # Planetary parameters
     "pl_rade": {"min": 0.4, "max": 3.0, "name": "Planet Radius", "unit": "Earth radii"},
@@ -32,7 +32,7 @@ HABITABILITY_THRESHOLDS = {
     },
 }
 
-# Mapping CSV columns to key parameters and their properties for plotting
+
 KEY_PARAMETERS_MAP = {
     "pl_rade": {"name": "Planet Radius", "unit": "Earth Radii", "type": "planetary"},
     "pl_eqt": {"name": "Equilibrium Temperature", "unit": "K", "type": "planetary"},
@@ -45,11 +45,11 @@ KEY_PARAMETERS_MAP = {
 }
 
 # --- Plotly Visual Parameters ---
-# Marker Sizes
+
 DEFAULT_PLANET_MARKER_SIZE = 6
 EXCELLENT_CANDIDATE_MARKER_SIZE = 9
 SUN_MARKER_SIZE = 12
-EARTH_MARKER_SIZE = 9  # Same as excellent candidate for emphasis
+EARTH_MARKER_SIZE = 9
 
 # Colors for Classification Categories
 CLASSIFICATION_COLORS = {
@@ -71,7 +71,7 @@ HOVER_BG_COLORS = {  # Background color for hover based on category
 
 
 LOCAL_NEIGHBORHOOD_OPACITY = 0.1
-SOLAR_SYSTEM_OPACITY = 0.5  # Not currently used, but kept for potential future use
+SOLAR_SYSTEM_OPACITY = 0.5
 
 # --- Camera Control Parameters ---
 CAMERA_DEFAULT_EYE_X = 400
@@ -96,7 +96,7 @@ LEGEND_STYLE = dict(
 
 
 # PCA Specific Constants from Notebook
-PCA_RANGE_PREFERENCE_DEFAULT = "relaxed"  # or "refined"
+PCA_RANGE_PREFERENCE_DEFAULT = "relaxed"
 
 PCA_GOOD_RANGES_SETS = {
     "relaxed": {
@@ -130,7 +130,7 @@ PCA_CATEGORY_COLORS = {
     "Too Large (Gas Giant)": "#9370DB",
     "Too Small": "#FF69B4",
     "Other Issues": "#FF8C00",
-    "Missing Data": "#A9A9A9",  # Added a color for Missing Data
+    "Missing Data": "#A9A9A9",
 }
 
 PCA_FEATURES = [

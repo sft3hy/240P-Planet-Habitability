@@ -4,8 +4,8 @@ import plotly.graph_objects as go
 import plotly.express as px
 import numpy as np
 import pandas as pd
-from plotly.subplots import make_subplots  # For PCA 2D projections
-import matplotlib.pyplot as plt  # For the Matplotlib PCA plot
+from plotly.subplots import make_subplots
+import matplotlib.pyplot as plt
 
 
 from constants import (
@@ -19,21 +19,21 @@ from constants import (
     CAMERA_Z_FACTOR,
     CAMERA_EFFECTIVE_DISTANCE_MIN,
     CAMERA_EFFECTIVE_DISTANCE_MAX,
-    CLASSIFICATION_COLORS,  # Make sure this is imported if not already
+    CLASSIFICATION_COLORS,
     HOVER_FONT_COLOR,
     HOVER_BG_COLORS,
     PCA_RANGE_PREFERENCE_DEFAULT,
     PCA_GOOD_RANGES_SETS,
     PCA_CATEGORY_COLORS,
     PCA_FEATURES,
-    PCA_COMPLETE_CATEGORIES,  # PCA Constants
+    PCA_COMPLETE_CATEGORIES,
 )
 
 from data_processing import (
-    format_value,  # Keep if used elsewhere
+    format_value,
     load_and_prepare_data_for_pca,
     categorize_planets_for_pca,
-    perform_pca_analysis,  # PCA data functions
+    perform_pca_analysis,
 )
 
 
@@ -294,20 +294,17 @@ def display_habitability_analysis_dashboard(
     )
 
 
-# MODIFIED FUNCTION: display_cluster_visualization
-def display_cluster_visualization(
-    base_df, run_clustering_func, feature_options_map
-):  # Added feature_options_map
+def display_cluster_visualization(base_df, run_clustering_func, feature_options_map):
     st.header("K-Means Cluster Analysis")
     st.markdown(
         "Explore exoplanet clusters based on selected physical parameters. This is an unsupervised learning approach to find natural groupings in the data."
     )
 
-    if base_df is None or base_df.empty:  # Added check for base_df empty as well
+    if base_df is None or base_df.empty:
         st.warning("No exoplanet data available for K-Means Clustering.")
         return
 
-    if not feature_options_map:  # Check if the map itself is empty
+    if not feature_options_map:
         st.sidebar.error(
             "Feature options for clustering are not available. Cannot proceed with K-Means."
         )
@@ -316,26 +313,21 @@ def display_cluster_visualization(
         )
         return
 
-    # Default selection uses the friendly names (keys of the map)
     default_selection_friendly = ["Planet Radius (ER)", "Equilibrium Temperature (K)"]
 
-    # Ensure default selections are valid keys in the provided feature_options_map
     valid_default_selection = [
         f for f in default_selection_friendly if f in feature_options_map
     ]
-    if (
-        not valid_default_selection and feature_options_map
-    ):  # If defaults are bad, pick first few available
+    if not valid_default_selection and feature_options_map:
         valid_default_selection = list(feature_options_map.keys())[:2]
 
     selected_features_friendly = st.sidebar.multiselect(
         "Select features for K-Means clustering:",
-        options=list(feature_options_map.keys()),  # Use keys from the passed map
+        options=list(feature_options_map.keys()),
         default=valid_default_selection,
         key="cluster_features_multiselect",
     )
 
-    # Map friendly names back to actual DataFrame column names
     selected_features_actual = [
         feature_options_map[f]
         for f in selected_features_friendly
@@ -344,14 +336,8 @@ def display_cluster_visualization(
 
     if not selected_features_actual:
         st.sidebar.warning("Please select at least one feature for clustering.")
-        # Optionally, you could prevent further execution or display a message in the main area
-        # st.info("Select features in the sidebar to perform K-Means clustering.")
-        # return # Or let run_clustering handle it if it's robust to empty feature list
 
     min_clusters = 1
-    # Calculate max_clusters_possible based on non-NaN rows for *at least one* selected feature if features are selected
-    # This is a bit complex to do perfectly here, so we'll stick to len(base_df) as a simpler upper bound for the slider.
-    # A more precise count would involve dropping NaNs for selected_features_actual from base_df.
     max_clusters_possible = (
         len(base_df) if base_df is not None and not base_df.empty else 1
     )
@@ -366,30 +352,22 @@ def display_cluster_visualization(
     n_clusters_interactive = st.sidebar.slider(
         "Number of Clusters (K-Means)",
         min_value=min_clusters,
-        max_value=slider_max_clusters,  # Make sure slider_max_clusters is at least 1
+        max_value=slider_max_clusters,
         value=default_n_clusters,
         step=1,
         key="n_clusters_slider_plotly",
     )
 
-    # This was already checked, but good for robustness
     if base_df is None or base_df.empty:
-        st.error(
-            "No data available to display clusters."
-        )  # Should not be reached if initial check passes
+        st.error("No data available to display clusters.")
         return
 
     df_clustered, actual_n_clusters = run_clustering_func(
         base_df, n_clusters_interactive, selected_features_actual
     )
 
-    # Message about excluded planets
-    # Count planets that *could* have been clustered (had data for selected features)
     num_eligible_for_clustering = 0
     if selected_features_actual:
-        # Create a temporary DataFrame with only the selected features and drop rows where ALL are NaN
-        # A more accurate count would be rows where NONE of the selected features are NaN,
-        # matching run_clustering's dropna(subset=...)
         eligible_df = base_df.dropna(subset=selected_features_actual)
         num_eligible_for_clustering = len(eligible_df)
 
@@ -409,18 +387,17 @@ def display_cluster_visualization(
 
     if (
         actual_n_clusters < n_clusters_interactive
-        and n_clusters_interactive > 1  # Only show if user requested more than 1
-        and num_actually_clustered > 0  # Only if some clustering happened
+        and n_clusters_interactive > 1
+        and num_actually_clustered > 0
     ):
         st.sidebar.info(
             f"Adjusted to {actual_n_clusters} clusters for the {num_actually_clustered} planet(s) included in clustering, likely due to data characteristics or number of valid data points."
         )
 
-    # Ensure hover_text_main exists before trying to use it
     if (
         "hover_text_main" not in df_clustered.columns
         and "pl_name" in df_clustered.columns
-    ):  # Basic fallback
+    ):
         df_clustered["hover_text_main"] = df_clustered["pl_name"]
 
     df_clustered["hover_text_cluster"] = df_clustered.apply(
@@ -432,22 +409,18 @@ def display_cluster_visualization(
         axis=1,
     )
 
-    fig = create_base_figure(
-        df_clustered, neighborhood_sphere_initial_visibility=True
-    )  # create_base_figure should handle None or empty df_clustered
+    fig = create_base_figure(df_clustered, neighborhood_sphere_initial_visibility=True)
 
     if (
         not df_clustered.empty
         and "cluster" in df_clustered.columns
         and "x" in df_clustered.columns
     ):
-        # Filter out rows that don't have coordinates for plotting, even if clustered
+
         plot_df = df_clustered.dropna(subset=["x", "y", "z", "marker_size", "cluster"])
 
         if not plot_df.empty:
-            show_colorbar = (
-                plot_df["cluster"].nunique() > 1
-            )  # Base colorbar on actual plotted data
+            show_colorbar = plot_df["cluster"].nunique() > 1
             fig.add_trace(
                 go.Scatter3d(
                     x=plot_df["x"],
@@ -558,12 +531,8 @@ def display_lda_visualization(
         f"LDA Results ({actual_n_components} Component{'s' if actual_n_components > 1 else ''})"
     )
 
-    # --- THIS IS THE CORRECTED PART ---
-    # Check if explained_variance is not None and has elements
     if explained_variance is not None and len(explained_variance) > 0:
-        # Alternatively, if explained_variance is always a numpy array (even if empty):
-        # if explained_variance.size > 0:
-        # --- END OF CORRECTION ---
+
         expl_var_str_list = [
             f"LD{i+1}: {var*100:.2f}%" for i, var in enumerate(explained_variance)
         ]
@@ -576,7 +545,7 @@ def display_lda_visualization(
 
     def create_lda_hover_text(row):
         base_hover = row.get("hover_text_main", "")
-        # Ensure robust splitting of hover_text_main
+
         parts = base_hover.split("--- Key Parameters ---", 1)
         header_part = parts[0]
         params_part = parts[1] if len(parts) > 1 else "Parameter details not available."
@@ -613,9 +582,7 @@ def display_lda_visualization(
             title="Distribution of LDA Component 1 by Class",
             custom_data=["hover_text_lda"],
         )
-        fig_lda.update_traces(
-            hovertemplate="%{customdata[0]}<extra></extra>"
-        )  # Ensure hover works
+        fig_lda.update_traces(hovertemplate="%{customdata[0]}<extra></extra>")
         st.plotly_chart(fig_lda, use_container_width=True)
 
     elif actual_n_components >= 2:
@@ -631,11 +598,9 @@ def display_lda_visualization(
             symbol="classification_category",
             labels={"lda_comp_1": "LDA Component 1", "lda_comp_2": "LDA Component 2"},
             title="Exoplanets in LDA Space (First 2 Components)",
-            custom_data=["hover_text_lda"],  # Ensure hover works
+            custom_data=["hover_text_lda"],
         )
-        fig_lda.update_traces(
-            hovertemplate="%{customdata[0]}<extra></extra>"
-        )  # Ensure hover works
+        fig_lda.update_traces(hovertemplate="%{customdata[0]}<extra></extra>")
         fig_lda.update_layout(legend_title_text="Classification")
         st.plotly_chart(fig_lda, use_container_width=True)
 
@@ -648,16 +613,6 @@ def display_lda_visualization(
         num_loadings_to_show = min(actual_n_components, lda_model.scalings_.shape[1], 2)
         if num_loadings_to_show > 0:
             loadings_cols = [f"LD{i+1}" for i in range(num_loadings_to_show)]
-
-            # Ensure selected_lda_features_actual matches the number of rows in scalings_
-            # This means it should be the features *used* by LDA
-            # `lda_model.feature_names_in_` would be ideal if available and consistently set,
-            # but selected_lda_features_actual (after scaling/LDA processing) should align with scalings_ rows.
-
-            # If lda_model.scalings_ has fewer rows than selected_lda_features_actual due to feature removal
-            # (e.g., zero variance), this could be an issue. For now, assume they align.
-            # A safer approach would be to get feature names from the lda_model if possible,
-            # or ensure the input features to LDA are exactly those used for scaling.
 
             if len(selected_lda_features_actual) == lda_model.scalings_.shape[0]:
                 loadings_df = pd.DataFrame(
@@ -684,8 +639,6 @@ def display_lda_visualization(
 
 
 # --- PCA Visualization Section ---
-
-
 def _create_pca_hover_text_plotly(df_row, pca_coords):
     """Helper to create hover text for Plotly PCA plots."""
     hover_text = f"<b>{df_row.get('pl_name', 'N/A')}</b><br>"
@@ -737,7 +690,6 @@ def display_pca_analysis_page():
     )
 
     # --- Data Loading and Processing ---
-    # Use the dedicated PCA data loader for now
     df_pca_initial = load_and_prepare_data_for_pca()
     if df_pca_initial is None:
         st.error("Failed to load data for PCA analysis.")
@@ -757,7 +709,6 @@ def display_pca_analysis_page():
     else:
         st.warning("Planet categories for PCA not generated.")
 
-    # Perform PCA (request 3 components for 3D/projections, 2 for 2D Matplotlib if strict)
     n_pca_components = (
         3 if "3D" in selected_plot_type or "Projections" in selected_plot_type else 2
     )
@@ -825,7 +776,7 @@ def _display_2d_pca_matplotlib(df_plot_data, pca_model, range_preference):
     fig, ax = plt.subplots(figsize=(12, 8))
     y_categories = df_plot_data["pca_planet_category"]
 
-    for category_name in PCA_COMPLETE_CATEGORIES:  # Use predefined order if desired
+    for category_name in PCA_COMPLETE_CATEGORIES:
         mask = y_categories == category_name
         if mask.any():
             color = PCA_CATEGORY_COLORS.get(category_name, "gray")
@@ -887,7 +838,6 @@ def _display_3d_pca_plotly(df_plot_data, pca_model, range_preference):
         mask = y_categories == category_name
         if mask.any():
             color = PCA_CATEGORY_COLORS.get(category_name, "gray")
-            # Create hover texts for this category
             hover_texts_cat = [
                 _create_pca_hover_text_plotly(
                     df_plot_data.loc[idx],
@@ -984,7 +934,7 @@ def _display_2d_projections_plotly(df_plot_data, pca_model, range_preference):
     )
     y_categories = df_plot_data["pca_planet_category"]
 
-    plot_pairs = [(0, 1), (0, 2), (1, 2)]  # PC1 vs PC2, PC1 vs PC3, PC2 vs PC3
+    plot_pairs = [(0, 1), (0, 2), (1, 2)]
     subplot_positions = [(1, 1), (1, 2), (2, 1)]
 
     for i, (pc_x_idx, pc_y_idx) in enumerate(plot_pairs):
@@ -1021,7 +971,7 @@ def _display_2d_projections_plotly(df_plot_data, pca_model, range_preference):
                         name=category_name,
                         text=hover_texts_cat,
                         hovertemplate="%{text}<extra></extra>",
-                        showlegend=(i == 0),  # Show legend only on the first subplot
+                        showlegend=(i == 0),
                     ),
                     row=row,
                     col=col,
@@ -1072,7 +1022,6 @@ def _display_2d_projections_plotly(df_plot_data, pca_model, range_preference):
             col=col,
         )
 
-    # Variance explained bar chart
     fig_subplots.add_trace(
         go.Bar(
             x=[f"PC{i+1}" for i in range(pca_model.n_components_)],
