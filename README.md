@@ -38,22 +38,6 @@ The primary dataset used in this application is a cleaned CSV file derived from 
 
 ---
 
-## 📂 Project Structure
-
-The project is organized into modules for clarity and maintainability.
-.
-├── app.py # Main Streamlit application file (UI and page routing)
-├── data_processing.py # Functions for data loading, cleaning, classification, and ML
-├── plotting.py # Functions for generating all Plotly and Matplotlib visualizations
-├── constants.py # Stores all constants, thresholds, colors, and configurations
-├── requirements.txt # Python dependencies
-├── data/
-│ └── Planetary-Systems-May-20-2025_clean.csv # The dataset
-├── Images/
-│ └── *.png # Static plots for the analysis dashboard
-└── README.md # This file
----
-
 ## ⚙️ Setup and Installation
 
 To run this project locally, follow these steps:
