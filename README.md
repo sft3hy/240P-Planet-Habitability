@@ -1,4 +1,57 @@
+# Exoplanet Habitability Explorer 🌌
 
+An interactive Streamlit web application for visualizing and analyzing exoplanet data from the NASA Exoplanet Archive. This tool allows users to explore a 3D map of known exoplanets, analyze their habitability potential based on key stellar and planetary parameters, and apply machine learning techniques like K-Means, LDA, and PCA for deeper insights.
+
+
+*(Above: A demonstration of the interactive 3D classification map and the PCA analysis page.)*
+
+---
+
+## 🚀 Features
+
+*   **Exoplanet Classification Map**: An interactive 3D visualization of exoplanetary systems using Plotly. Planets are colored by a custom habitability classification, and hovering over a point reveals detailed data.
+*   **Habitability Analysis & Insights**: A dashboard view summarizing the classification counts, highlighting key findings, and displaying pre-generated distribution plots for the 8 key habitability parameters.
+*   **K-Means Cluster Analysis**: An unsupervised learning tool to group exoplanets into clusters based on user-selected physical parameters. The number of clusters (K) is interactive.
+*   **Linear Discriminant Analysis (LDA)**: A supervised dimensionality reduction technique that visualizes the separability of the predefined habitability classes.
+*   **Principal Component Analysis (PCA)**: An unsupervised dimensionality reduction tool to explore the primary sources of variance in the exoplanet data. Includes multiple interactive and static plot options (2D, 3D, and projections).
+*   **Dynamic UI**: All controls are neatly organized in a sidebar, allowing users to switch between analysis pages and configure parameters without cluttering the main view.
+
+---
+
+## 📊 Data Source
+
+The primary dataset used in this application is a cleaned CSV file derived from the **NASA Exoplanet Archive**.
+
+-   **File**: `data/Planetary-Systems-May-20-2025_clean.csv`
+-   **Access Date**: May 20, 2025
+-   **Static Images**: The "Habitability Analysis" page uses pre-generated plots stored in the `Images/` directory to display parameter distributions.
+
+---
+
+## 🛠️ Technical Stack
+
+*   **Language**: Python
+*   **Web Framework**: Streamlit
+*   **Data Manipulation**: Pandas, NumPy
+*   **Machine Learning**: Scikit-learn
+*   **Data Visualization**: Plotly, Matplotlib
+
+---
+
+## 📂 Project Structure
+
+The project is organized into modules for clarity and maintainability.
+.
+├── app.py # Main Streamlit application file (UI and page routing)
+├── data_processing.py # Functions for data loading, cleaning, classification, and ML
+├── plotting.py # Functions for generating all Plotly and Matplotlib visualizations
+├── constants.py # Stores all constants, thresholds, colors, and configurations
+├── requirements.txt # Python dependencies
+├── data/
+│ └── Planetary-Systems-May-20-2025_clean.csv # The dataset
+├── Images/
+│ └── *.png # Static plots for the analysis dashboard
+└── README.md # This file
 ---
 
 ## ⚙️ Setup and Installation
