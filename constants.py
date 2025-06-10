@@ -1,5 +1,3 @@
-# constants.py
-
 # --- Physical Constants
 PARSEC_TO_LY = 3.26156
 

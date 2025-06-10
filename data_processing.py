@@ -1,4 +1,3 @@
-# data_processing.py
 import pandas as pd
 import numpy as np
 from sklearn.cluster import KMeans
