@@ -67,8 +67,8 @@ def main():
         "Exoplanet Classification Map",
         "Habitability Analysis & Insights",
         "K-Means Cluster Analysis",
-        "LDA Visualization",
         "PCA Analysis",
+        "LDA Visualization",
     ]
     selected_page = st.sidebar.radio(
         "Select Analysis View", page_options, key="main_page_selection"
